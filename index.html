@@ -3644,56 +3644,55 @@
          * 7. Adjust evolution parameters in the genetic algorithm functions
          * 
          * LATEST FEATURES ADDED:
-         * - Food system: Dead creatures become food sources that provide energy
-         * - Death clustering: Multiple deaths in close proximity create food clusters
-         * - Resource competition: Food decays over time, creating scarcity dynamics
-         * - Cooperative tag removal: Same-type creatures can heal each other's tags
+         * - Continuous evolution: No generations, creatures respawn individually
+         * - Fitness-based breeding: Top performers influence future population
+         * - Real-time adaptation: Neural networks evolve based on performance
+         * - Dynamic population balance: Maintains hunter/prey ratios automatically
          * - Special abilities system: Unique mutations for hunters vs prey
-         * - Enhanced strategic depth: Wall-baiting, teamwork, evasion tactics
+         * - Manual speed control: Adjustable simulation speed with slider
          * 
-         * FOOD SYSTEM:
-         * - Dead creatures automatically become food sources at their death location
-         * - Food provides energy when consumed by creatures moving over it
-         * - Food clusters form when multiple deaths occur in close proximity
-         * - Food decays over time, becoming less nutritious and eventually disappearing
-         * - Creates resource management dynamics that drive evolution
+         * CONTINUOUS EVOLUTION SYSTEM:
+         * - Creatures respawn 60 frames after elimination with inherited traits
+         * - Elite performers (top 70%) have higher breeding priority
+         * - Neural network topology evolves with each respawn
+         * - Population automatically maintains 15 hunters and 15 prey
+         * - Real-time fitness calculation drives immediate adaptation
          * 
          * HUNTER SPECIAL ABILITIES:
          * - Pack Hunting: Enhanced detection of prey
          * - Energy Vampire: Drain more energy when tagging
-         * - Wall Bounce: Bounce off walls without damage
          * - Speed Burst: Temporary speed boost when low energy
-         * - Territorial Instinct: Gain energy near other hunters
          * 
          * PREY SPECIAL ABILITIES:
-         * - Camouflage: Become invisible to hunters periodically
          * - Evasion: Chance to avoid being tagged
          * - Energy Efficiency: Use less energy when moving
-         * - Wall Phasing: Pass through walls (limited uses)
-         * - Group Healing: Enhanced healing of nearby prey
+         * - Camouflage: Become harder to detect by hunters
+         * 
+         * NEGATIVE TRAITS (BOTH TYPES):
+         * - Lethargy: Move slower, use more energy
+         * - Anxiety: Avoid others, reducing cooperation
          * 
          * STRATEGIC GAMEPLAY:
-         * - Food creates additional survival strategies beyond just avoiding elimination
-         * - Death locations become strategic resources that creatures compete for
-         * - Energy management balances movement, survival, and food acquisition
-         * - Hunters can work together to corner prey
-         * - Prey can lead hunters into walls for damage
-         * - Same-type cooperation removes tags and provides healing
-         * - Special abilities create unique creature lineages
-         * - Food scarcity drives evolution toward more efficient creatures
+         * - Continuous evolution drives immediate adaptation to successful strategies
+         * - Fitness-based respawning rewards effective hunters and evasive prey
+         * - Energy management balances movement, survival, and combat effectiveness
+         * - Hunters evolve better neural networks for tracking and tagging prey
+         * - Prey develop smarter evasion patterns and energy conservation
+         * - Wall interactions create tactical movement challenges
+         * - Special abilities create diverse creature lineages and strategies
+         * - Population balance automatically maintains predator-prey dynamics
          * 
          * EXPERIMENT IDEAS:
-         * - Observe how food distribution affects creature movement patterns
-         * - Test if creatures evolve to seek out death clusters for better nutrition
-         * - Modify food decay rates to create feast/famine cycles
-         * - Create pack-hunting strategies by adjusting hunter abilities
-         * - Test prey survival techniques with different ability combinations
-         * - Adjust wall density to create maze-like tactical environments
-         * - Modify ability mutation rates to see rapid evolution
-         * - Create tournaments between different ability combinations
-         * - Add environmental changes that favor different strategies
-         * - Implement predator-prey population dynamics
-         * - Create specialized roles within hunter/prey groups
+         * - Watch how neural network topologies evolve over time
+         * - Test different speed settings to see rapid vs slow evolution
+         * - Observe which special abilities become dominant
+         * - Adjust respawn delay to see effects on strategy development
+         * - Modify energy costs to create different survival pressures
+         * - Change wall density to create different tactical environments
+         * - Test how ability mutation rates affect population diversity
+         * - Create tournaments between different configuration settings
+         * - Observe emergence of predator-prey arms races
+         * - Study how fitness rewards shape behavioral evolution
          * =============================== */
     </script>
 </body>
