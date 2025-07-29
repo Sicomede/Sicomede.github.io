@@ -138,6 +138,36 @@
             bestPreyFitness: 0                 // Highest fitness score among current prey
         };
 
+        // ===== DEEP NEAT ANALYTICS =====
+        // Track evolution of neural network complexity over time
+        let deepNeatStats = {
+            // Network architecture statistics
+            avgLayers: { hunters: 0, prey: 0 },           // Average number of hidden layers
+            avgNodesPerLayer: { hunters: 0, prey: 0 },    // Average nodes per layer
+            avgComplexity: { hunters: 0, prey: 0 },       // Average total network complexity
+            
+            // Topology evolution tracking
+            layersAdded: 0,                               // Total layers added through evolution
+            layersRemoved: 0,                             // Total layers removed through evolution
+            nodesAdded: 0,                                // Total nodes added through evolution
+            nodesRemoved: 0,                              // Total nodes removed through evolution
+            
+            // Architecture diversity
+            uniqueArchitectures: new Set(),               // Track different network structures
+            mostComplexNetwork: { layers: 0, nodes: 0, complexity: 0 },
+            simplestNetwork: { layers: 999, nodes: 999, complexity: 999 },
+            
+            // Performance correlation
+            complexityFitnessCorrelation: 0,              // Correlation between complexity and fitness
+            optimalComplexityRange: { min: 0, max: 0 }   // Range of complexity for best performers
+        };
+
+        // ===== VISUALIZATION SETTINGS =====
+        let showNeuralNetworks = false;       // Toggle neural network visualization
+        let selectedCreature = null;          // Creature whose brain to visualize
+        let showComplexityGraph = true;       // Toggle complexity evolution graph
+        let showDetailedStats = true;         // Toggle detailed performance metrics
+
         // ===== DEEP NEURAL NETWORK CLASS =====
         // This is the "brain" of each creature. It's an enhanced version of NEAT
         // (NeuroEvolution of Augmenting Topologies) that supports MULTIPLE HIDDEN LAYERS
