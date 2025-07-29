@@ -284,7 +284,17 @@
             <!-- Speed Controls -->
             <div class="control-group">
                 <label>Speed: <span id="speedDisplay">1.0x</span></label>
-                <input type="range" id="simSpeed" min="0.1" max="3.0" step="0.1" value="1.0">
+                <input type="range" id="simSpeed" min="0.1" max="50.0" step="0.1" value="1.0">
+            </div>
+            
+            <!-- NEW: Timer Controls -->
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="showTimer" checked> Show Timer
+                </label>
+                <div id="simulationTimer" style="font-size: 10px; color: #aaa; margin-top: 2px;">
+                    Time: 0:00
+                </div>
             </div>
 
             <!-- Game Mode -->
@@ -378,6 +388,25 @@
                 </div>
                 <div class="ability-item prey-ability">
                     <strong>Group Healing:</strong> Enhanced cooperative healing
+                </div>
+            </div>
+
+            <h4 style="color: #ff9999; margin: 12px 0 8px 0;">⚠️ Negative Mutations (Both Types)</h4>
+            <div class="ability-list">
+                <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
+                    <strong>Anxiety:</strong> Avoids others, blocks group healing
+                </div>
+                <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
+                    <strong>Aggression:</strong> Occasionally attacks own type
+                </div>
+                <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
+                    <strong>Paranoia:</strong> Random direction changes, wastes energy
+                </div>
+                <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
+                    <strong>Lethargy:</strong> Slower movement, higher energy costs
+                </div>
+                <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
+                    <strong>Confusion:</strong> Sometimes moves in wrong direction
                 </div>
             </div>
 
@@ -496,8 +525,12 @@
                 HUNTER: '#ff4444',      // Red - aggressive/chaser
                 PREY: '#4444ff',        // Blue - defensive/hider
                 NEUTRAL: '#44ff44',     // Green - balanced
-                WALL: '#666666'         // Gray - obstacles
-            }
+                WALL: '#9966cc'         // Light ghost purple - boundaries
+            },
+            
+            // NEW: Simulation timing and display
+            SHOW_TIMER: true,           // Show simulation timer
+            MAX_SPEED_MULTIPLIER: 50    // Allow up to 50x speed for fast iteration
         };
 
         // ===== GLOBAL VARIABLES =====
@@ -515,6 +548,11 @@
             aliveCount: 0,
             eliminatedCount: 0
         };
+        
+        // NEW: Simulation timing
+        let simulationStartTime = 0;
+        let simulationPausedTime = 0;
+        let lastPauseStart = 0;
 
         // ===== NEURAL NETWORK CLASS =====
         // This represents the "brain" of each creature
@@ -681,6 +719,10 @@
                     availableAbilities = ['camouflage', 'evasion', 'energyEfficiency', 'wallPhasing', 'groupHealing'];
                 }
                 
+                // NEW: Negative mutations available to both types
+                const negativeAbilities = ['anxiety', 'aggression', 'paranoia', 'lethargy', 'confusion'];
+                availableAbilities = [...availableAbilities, ...negativeAbilities];
+                
                 // Filter out already-acquired abilities
                 availableAbilities = availableAbilities.filter(ability => !creature.specialAbilities[ability]);
                 
@@ -690,7 +732,10 @@
                 if (Math.random() < CONFIG.MUTATION_ACTIVATION_RATE) {
                     let newAbility = availableAbilities[Math.floor(Math.random() * availableAbilities.length)];
                     creature.specialAbilities[newAbility] = true;
-                    console.log(`${creature.type} gained new ability: ${newAbility}`);
+                    
+                    // Log with indication of positive/negative
+                    const isNegative = negativeAbilities.includes(newAbility);
+                    console.log(`${creature.type} gained ${isNegative ? 'NEGATIVE' : 'positive'} ability: ${newAbility}`);
                 }
             }
         }
@@ -754,6 +799,13 @@
                     energyEfficiency: false,    // Use less energy when moving
                     wallPhasing: false,         // Can pass through walls (limited uses)
                     groupHealing: false,        // Heal nearby prey more effectively
+                    
+                    // NEW: Negative mutations (can affect both types)
+                    anxiety: false,             // Avoid being near others (blocks group healing)
+                    aggression: false,          // Attack own type occasionally
+                    paranoia: false,            // Constantly change direction, waste energy
+                    lethargy: false,            // Move slower, use more energy
+                    confusion: false            // Sometimes move in wrong direction
                 };
                 this.specialAbilityUses = {     // Limited-use abilities
                     wallPhasing: 3,             // Number of times can phase through walls
@@ -912,7 +964,18 @@
                 let maxOutput = Math.max(...outputs);
                 let chosenDirection = outputs.indexOf(maxOutput);
                 
-                // Move based on the neural network's decision
+                // NEW: Apply negative mutation effects to decision making
+                if (this.specialAbilities.confusion && Math.random() < 0.2) {
+                    // 20% chance to move in wrong direction
+                    chosenDirection = Math.floor(Math.random() * 4);
+                }
+                
+                if (this.specialAbilities.paranoia && Math.random() < 0.3) {
+                    // 30% chance to randomly change direction
+                    chosenDirection = Math.floor(Math.random() * 4);
+                }
+                
+                // Move based on the neural network's decision (potentially modified)
                 this.move(chosenDirection);
             }
 
@@ -954,6 +1017,10 @@
                     let energyCost = CONFIG.ENERGY_MOVE_COST;
                     if (this.specialAbilities.energyEfficiency) {
                         energyCost *= 0.7; // 30% less energy usage
+                    }
+                    // NEW: Lethargy increases energy cost
+                    if (this.specialAbilities.lethargy) {
+                        energyCost *= 1.5; // 50% more energy usage
                     }
                     
                     this.energy -= energyCost;
@@ -1051,6 +1118,26 @@
                         survivalBonus *= 1.3; // 30% bonus
                     }
                     this.energy += survivalBonus;
+                }
+                
+                // NEW: Apply negative mutation effects
+                if (this.specialAbilities.paranoia) {
+                    // Constantly changing direction wastes extra energy
+                    this.energy -= 0.3;
+                }
+                
+                if (this.specialAbilities.lethargy) {
+                    // Uses more energy for all actions
+                    this.energy -= 0.4;
+                }
+                
+                if (this.specialAbilities.anxiety) {
+                    // Loses energy when near others of same type
+                    let nearbyOwnType = creatures.filter(c => 
+                        c !== this && c.isAlive && c.type === this.type &&
+                        Math.abs(c.x - this.x) <= 2 && Math.abs(c.y - this.y) <= 2
+                    ).length;
+                    this.energy -= nearbyOwnType * 0.5; // Penalty for being near others
                 }
             }
 
@@ -1175,6 +1262,16 @@
                         );
                         
                         if (distance <= CONFIG.TAG_DISTANCE) {
+                            // NEW: Aggression mutation - attack own type occasionally
+                            if (this.specialAbilities.aggression && this.type === other.type && 
+                                Math.random() < 0.1) {
+                                // Aggressive creature "tags" its own type, causing damage
+                                other.energy -= 10;
+                                this.energy -= 5; // Aggressor also loses some energy
+                                console.log(`${this.type} creature attacked own type due to aggression!`);
+                                return;
+                            }
+                            
                             // Check for same-type cooperative healing
                             if (this.type === other.type && 
                                 (this.timesTagged > 0 || other.timesTagged > 0) &&
@@ -1220,6 +1317,11 @@
 
             // NEW: Cooperative healing between same-type creatures
             performCooperativeHealing(other) {
+                // NEW: Anxiety blocks cooperative healing
+                if (this.specialAbilities.anxiety || other.specialAbilities.anxiety) {
+                    return; // Anxious creatures won't heal or be healed
+                }
+                
                 if (this.energy < CONFIG.HEAL_ENERGY_COST && 
                     other.energy < CONFIG.HEAL_ENERGY_COST) {
                     return; // Not enough energy for either to heal
@@ -1413,31 +1515,60 @@
             // Update statistics
             updateStats();
             
+            // NEW: Count current population balance
+            let hunterCount = creatures.filter(c => c.type === 'HUNTER').length;
+            let preyCount = creatures.filter(c => c.type === 'PREY').length;
+            
+            console.log(`Pre-evolution: ${hunterCount} hunters, ${preyCount} prey`);
+            
             let newPopulation = [];
             let eliteCount = Math.floor(CONFIG.POPULATION_SIZE * CONFIG.ELITE_PERCENTAGE);
             
             // Keep the best performers (elitism)
-            for (let i = 0; i < eliteCount; i++) {
+            for (let i = 0; i < eliteCount && i < creatures.length; i++) {
                 let elite = new Creature(
-                    Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE)),
-                    Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE)),
+                    Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE - 2)) + 1,
+                    Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE - 2)) + 1,
                     creatures[i].type
                 );
                 elite.brain = creatures[i].brain.copy();
+                // Copy special abilities
+                Object.keys(creatures[i].specialAbilities).forEach(ability => {
+                    elite.specialAbilities[ability] = creatures[i].specialAbilities[ability];
+                });
                 newPopulation.push(elite);
             }
             
-            // Create offspring for the rest of the population
+            // NEW: Enforce population balance for remaining slots
+            let targetHunters = Math.floor(CONFIG.POPULATION_SIZE / 2);
+            let targetPrey = CONFIG.POPULATION_SIZE - targetHunters;
+            let currentHunters = newPopulation.filter(c => c.type === 'HUNTER').length;
+            let currentPrey = newPopulation.filter(c => c.type === 'PREY').length;
+            
+            // Create offspring for the rest of the population with type enforcement
             while (newPopulation.length < CONFIG.POPULATION_SIZE) {
                 // Select two parents using tournament selection
                 let parent1 = tournamentSelection();
                 let parent2 = tournamentSelection();
                 
+                // Determine child type based on what's needed
+                let childType;
+                if (currentHunters < targetHunters) {
+                    childType = 'HUNTER';
+                    currentHunters++;
+                } else if (currentPrey < targetPrey) {
+                    childType = 'PREY';
+                    currentPrey++;
+                } else {
+                    // Fallback to random if somehow balanced
+                    childType = Math.random() < 0.5 ? 'HUNTER' : 'PREY';
+                }
+                
                 // Create child
                 let child = new Creature(
-                    Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE)),
-                    Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE)),
-                    Math.random() < 0.5 ? parent1.type : parent2.type
+                    Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE - 2)) + 1,
+                    Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE - 2)) + 1,
+                    childType
                 );
                 
                 // Crossover (combine parent brains)
@@ -1462,7 +1593,14 @@
             frameCount = 0;
             stats.tags = 0;
             
-            console.log(`Generation ${generation} - Best Fitness: ${stats.bestFitness.toFixed(2)}`);
+            // Reset simulation timer
+            simulationStartTime = Date.now();
+            simulationPausedTime = 0;
+            
+            // Verify final balance
+            let finalHunters = creatures.filter(c => c.type === 'HUNTER').length;
+            let finalPrey = creatures.filter(c => c.type === 'PREY').length;
+            console.log(`Generation ${generation} - Hunters: ${finalHunters}, Prey: ${finalPrey}, Best Fitness: ${stats.bestFitness.toFixed(2)}`);
         }
 
         // Tournament selection - pick the best from a random group
@@ -1520,6 +1658,11 @@
             canvas.width = CONFIG.CANVAS_WIDTH;
             canvas.height = CONFIG.CANVAS_HEIGHT;
             
+            // NEW: Initialize timer
+            simulationStartTime = Date.now();
+            simulationPausedTime = 0;
+            lastPauseStart = 0;
+            
             // Create initial population
             createInitialPopulation();
             
@@ -1565,12 +1708,28 @@
             walls = [];
             let gridWidth = Math.floor(CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE);
             let gridHeight = Math.floor(CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE);
+            
+            // NEW: Create boundary walls (one square thick around the edge)
+            // Top and bottom boundaries
+            for (let x = 0; x < gridWidth; x++) {
+                walls.push(new Wall(x, 0));                    // Top boundary
+                walls.push(new Wall(x, gridHeight - 1));       // Bottom boundary
+            }
+            
+            // Left and right boundaries (excluding corners already covered)
+            for (let y = 1; y < gridHeight - 1; y++) {
+                walls.push(new Wall(0, y));                    // Left boundary
+                walls.push(new Wall(gridWidth - 1, y));        // Right boundary
+            }
+            
+            // Add random internal walls
             let totalCells = gridWidth * gridHeight;
             let wallCount = Math.floor(totalCells * CONFIG.WALL_DENSITY);
             
             for (let i = 0; i < wallCount; i++) {
-                let x = Math.floor(Math.random() * gridWidth);
-                let y = Math.floor(Math.random() * gridHeight);
+                // Only place internal walls (not on boundaries)
+                let x = Math.floor(Math.random() * (gridWidth - 2)) + 1;
+                let y = Math.floor(Math.random() * (gridHeight - 2)) + 1;
                 
                 // Make sure we don't place walls on top of each other
                 let wallExists = walls.some(wall => wall.x === x && wall.y === y);
@@ -1579,7 +1738,7 @@
                 }
             }
             
-            console.log(`Created ${walls.length} walls`);
+            console.log(`Created ${walls.length} walls (including boundary)`);
         }
 
         // Main game loop
@@ -1684,16 +1843,30 @@
             }, 0);
             document.getElementById('abilityCount').textContent = totalAbilities;
 
+            // NEW: Update simulation timer
+            if (CONFIG.SHOW_TIMER && simulationStartTime > 0) {
+                let currentTime = Date.now();
+                let elapsedTime = currentTime - simulationStartTime - simulationPausedTime;
+                if (isPaused) {
+                    elapsedTime -= currentTime - lastPauseStart;
+                }
+                
+                let seconds = Math.floor(elapsedTime / 1000) % 60;
+                let minutes = Math.floor(elapsedTime / 60000);
+                let timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                document.getElementById('simulationTimer').textContent = `Time: ${timeString}`;
+            }
+
             // Update analytics panel every few frames to avoid performance issues
             if (frameCount % 30 === 0) {
                 updateAnalytics();
                 
                 // Update neural network visualizations
                 const bestHunter = creatures
-                    .filter(c => c.type === 'hunter' && !c.eliminated)
+                    .filter(c => c.type === 'HUNTER' && c.isAlive)
                     .sort((a, b) => b.fitness - a.fitness)[0];
                 const bestPrey = creatures
-                    .filter(c => c.type === 'prey' && !c.eliminated)
+                    .filter(c => c.type === 'PREY' && c.isAlive)
                     .sort((a, b) => b.fitness - a.fitness)[0];
                 
                 if (bestHunter) drawNeuralNetwork('hunterBrain', bestHunter);
@@ -1711,8 +1884,20 @@
 
             // Simulation speed control
             document.getElementById('simSpeed').addEventListener('input', function(e) {
-                CONFIG.GENERATION_LENGTH = Math.floor(2000 / parseFloat(e.target.value));
-                document.getElementById('speedDisplay').textContent = e.target.value + 'x';
+                let speedMultiplier = parseFloat(e.target.value);
+                CONFIG.GENERATION_LENGTH = Math.floor(3000 / speedMultiplier);
+                document.getElementById('speedDisplay').textContent = speedMultiplier + 'x';
+                
+                // For very high speeds, adjust frame skipping in game loop
+                if (speedMultiplier > 10) {
+                    document.getElementById('speedDisplay').textContent = speedMultiplier + 'x (Fast Mode)';
+                }
+            });
+
+            // NEW: Timer toggle control
+            document.getElementById('showTimer').addEventListener('change', function(e) {
+                CONFIG.SHOW_TIMER = e.target.checked;
+                document.getElementById('simulationTimer').style.display = CONFIG.SHOW_TIMER ? 'block' : 'none';
             });
 
             // Mutation rate control
@@ -1749,6 +1934,11 @@
 
             // Control buttons
             document.getElementById('pauseBtn').addEventListener('click', function() {
+                if (!isPaused) {
+                    lastPauseStart = Date.now();
+                } else {
+                    simulationPausedTime += Date.now() - lastPauseStart;
+                }
                 isPaused = !isPaused;
                 this.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
             });
@@ -1760,6 +1950,10 @@
                 stats.tags = 0;
                 stats.aliveCount = 0;
                 stats.eliminatedCount = 0;
+                // Reset timer
+                simulationStartTime = Date.now();
+                simulationPausedTime = 0;
+                lastPauseStart = 0;
             });
 
             document.getElementById('evolveBtn').addEventListener('click', function() {
@@ -1810,7 +2004,13 @@
                 evasion: 0,
                 energyEfficient: 0,
                 wallPhasing: 0,
-                groupHealing: 0
+                groupHealing: 0,
+                // NEW: Negative mutations
+                anxiety: 0,
+                aggression: 0,
+                paranoia: 0,
+                lethargy: 0,
+                confusion: 0
             };
 
             // Count current abilities in population
