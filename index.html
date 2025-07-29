@@ -13,47 +13,112 @@
         }
 
         body {
-            font-family: 'Courier New', monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #0a0a0a;
             color: #ffffff;
             overflow: hidden;
         }
 
-        /* Control panel styling */
-        .controls {
+        /* Collapsible control panels */
+        .control-panel {
             position: absolute;
+            background: rgba(15, 15, 20, 0.95);
+            border: 2px solid #333;
+            border-radius: 8px;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .panel-header {
+            background: rgba(50, 50, 60, 0.9);
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 6px 6px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .panel-header:hover {
+            background: rgba(70, 70, 80, 0.9);
+        }
+
+        .panel-content {
+            padding: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            transition: max-height 0.3s ease;
+        }
+
+        .panel-content.collapsed {
+            max-height: 0;
+            padding: 0 10px;
+            overflow: hidden;
+        }
+
+        /* Main controls panel */
+        .main-controls {
             top: 10px;
             left: 10px;
-            background: rgba(20, 20, 20, 0.9);
-            padding: 15px;
-            border-radius: 8px;
-            border: 2px solid #333;
-            z-index: 1000;
-            min-width: 300px;
+            width: 300px;
+        }
+
+        /* Info panel */
+        .info-panel {
+            top: 10px;
+            right: 10px;
+            width: 350px;
+        }
+
+        /* Analytics panel */
+        .analytics-panel {
+            bottom: 10px;
+            left: 10px;
+            width: 400px;
+        }
+
+        /* Neural network visualization panel */
+        .neural-viz-panel {
+            bottom: 10px;
+            right: 10px;
+            width: 350px;
         }
 
         .control-group {
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         .control-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
             color: #ccc;
-            font-size: 12px;
+            font-size: 11px;
         }
 
         input[type="range"] {
             width: 100%;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         input[type="number"] {
-            width: 80px;
+            width: 60px;
             padding: 2px;
             background: #333;
             color: white;
             border: 1px solid #555;
+            border-radius: 3px;
+        }
+
+        select {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 3px;
+            padding: 4px;
+            width: 100%;
         }
 
         button {
@@ -64,6 +129,7 @@
             margin: 2px;
             cursor: pointer;
             border-radius: 3px;
+            font-size: 11px;
         }
 
         button:hover {
@@ -71,9 +137,53 @@
         }
 
         .stats {
-            font-size: 11px;
-            margin-top: 10px;
+            font-size: 10px;
             color: #aaa;
+            line-height: 1.4;
+        }
+
+        /* Neural network visualization */
+        .neural-canvas {
+            background: #111;
+            border: 1px solid #444;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+
+        /* Ability breakdown */
+        .ability-list {
+            font-size: 10px;
+            line-height: 1.3;
+        }
+
+        .ability-item {
+            margin: 3px 0;
+            padding: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        .hunter-ability {
+            border-left: 3px solid #ff4444;
+        }
+
+        .prey-ability {
+            border-left: 3px solid #4444ff;
+        }
+
+        /* Mutation stats */
+        .mutation-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 10px;
+        }
+
+        .mutation-stat {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: 3px;
+            text-align: center;
         }
 
         /* Canvas styling */
@@ -81,73 +191,242 @@
             display: block;
             cursor: crosshair;
         }
+
+        /* Scrollbar styling */
+        .panel-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .panel-content::-webkit-scrollbar-track {
+            background: #222;
+        }
+
+        .panel-content::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 3px;
+        }
+
+        .panel-content::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+
+        /* Analytics and Visualization Styles */
+        .neural-canvas {
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a1a;
+            display: block;
+            margin: 2px 0;
+        }
+
+        .mutation-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px;
+            margin-bottom: 8px;
+        }
+
+        .stat-item {
+            font-size: 9px;
+            background: #2a2a2a;
+            padding: 2px 4px;
+            border-radius: 2px;
+            border-left: 2px solid #66ff66;
+        }
+
+        .top-performer {
+            background: #2a2a2a;
+            padding: 4px;
+            margin: 2px 0;
+            border-radius: 3px;
+            border-left: 3px solid #ffaa00;
+            font-size: 9px;
+            line-height: 1.2;
+        }
+
+        .ability-list {
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .ability-item {
+            font-size: 9px;
+            line-height: 1.3;
+            margin: 3px 0;
+            padding: 3px 5px;
+            border-radius: 3px;
+            background: #2a2a2a;
+        }
+
+        .hunter-ability {
+            border-left: 3px solid #ff6666;
+        }
+
+        .prey-ability {
+            border-left: 3px solid #6666ff;
+        }
     </style>
 </head>
 <body>
-    <!-- ===== CONTROL PANEL ===== -->
-    <div class="controls">
-        <h3>🧠 NEAT Creatures Control Panel</h3>
-        
-        <!-- Population Settings -->
-        <div class="control-group">
-            <label>Population Size: <span id="popDisplay">50</span></label>
-            <input type="range" id="populationSize" min="10" max="200" value="50">
+    <!-- ===== MAIN CONTROLS PANEL ===== -->
+    <div class="control-panel main-controls">
+        <div class="panel-header" onclick="togglePanel('main-controls')">
+            🎛️ Simulation Controls
+            <span id="main-controls-arrow">▼</span>
         </div>
+        <div class="panel-content" id="main-controls-content">
+            <!-- Population Settings -->
+            <div class="control-group">
+                <label>Population: <span id="popDisplay">50</span></label>
+                <input type="range" id="populationSize" min="10" max="200" value="50">
+            </div>
 
-        <!-- Speed Controls -->
-        <div class="control-group">
-            <label>Simulation Speed: <span id="speedDisplay">1.0x</span></label>
-            <input type="range" id="simSpeed" min="0.1" max="3.0" step="0.1" value="1.0">
+            <!-- Speed Controls -->
+            <div class="control-group">
+                <label>Speed: <span id="speedDisplay">1.0x</span></label>
+                <input type="range" id="simSpeed" min="0.1" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <!-- Game Mode -->
+            <div class="control-group">
+                <label>Game Mode:</label>
+                <select id="gameMode">
+                    <option value="tag">Tag (Red chases Blue)</option>
+                    <option value="hideSeek">Hide & Seek</option>
+                    <option value="mixed">Mixed Behaviors</option>
+                </select>
+            </div>
+
+            <!-- Environment -->
+            <div class="control-group">
+                <label>Grid Size: <span id="gridDisplay">20</span></label>
+                <input type="range" id="gridSize" min="15" max="40" value="20">
+            </div>
+
+            <div class="control-group">
+                <label>Wall Density: <span id="wallDisplay">5%</span></label>
+                <input type="range" id="wallDensity" min="0" max="15" value="5">
+            </div>
+
+            <!-- Evolution Parameters -->
+            <div class="control-group">
+                <label>Mutation Rate: <span id="mutationDisplay">0.1</span></label>
+                <input type="range" id="mutationRate" min="0.01" max="0.5" step="0.01" value="0.1">
+            </div>
+
+            <div class="control-group">
+                <label>Ability Mutations: <span id="abilityMutationDisplay">5%</span></label>
+                <input type="range" id="abilityMutation" min="1" max="20" value="5">
+            </div>
+
+            <!-- Controls -->
+            <div class="control-group">
+                <button id="pauseBtn">⏸️ Pause</button>
+                <button id="resetBtn">🔄 Reset</button>
+                <button id="evolveBtn">🧬 Evolve</button>
+            </div>
+
+            <!-- Basic Statistics -->
+            <div class="stats">
+                <div>Generation: <span id="generation">1</span></div>
+                <div>Alive: <span id="aliveCount">0</span> | Eliminated: <span id="eliminatedCount">0</span></div>
+                <div>Best Fitness: <span id="bestFitness">0</span></div>
+                <div>Active Abilities: <span id="abilityCount">0</span></div>
+            </div>
         </div>
+    </div>
 
-        <!-- Neural Network Parameters -->
-        <div class="control-group">
-            <label>Mutation Rate: <span id="mutationDisplay">0.1</span></label>
-            <input type="range" id="mutationRate" min="0.01" max="0.5" step="0.01" value="0.1">
+    <!-- ===== GAME INFO PANEL ===== -->
+    <div class="control-panel info-panel">
+        <div class="panel-header" onclick="togglePanel('info-panel')">
+            📖 Game Rules & Abilities
+            <span id="info-panel-arrow">▼</span>
         </div>
+        <div class="panel-content" id="info-panel-content">
+            <h4 style="color: #ff6666; margin-bottom: 8px;">🔴 HUNTERS (Red)</h4>
+            <div class="ability-list">
+                <div class="ability-item hunter-ability">
+                    <strong>Pack Hunting:</strong> Enhanced prey detection and coordination
+                </div>
+                <div class="ability-item hunter-ability">
+                    <strong>Energy Vampire:</strong> Drain 50% more energy when tagging
+                </div>
+                <div class="ability-item hunter-ability">
+                    <strong>Wall Bounce:</strong> Bounce off walls without damage
+                </div>
+                <div class="ability-item hunter-ability">
+                    <strong>Speed Burst:</strong> Double speed when low energy (5 uses)
+                </div>
+                <div class="ability-item hunter-ability">
+                    <strong>Territorial:</strong> Gain energy near other hunters
+                </div>
+            </div>
 
-        <!-- Game Mode -->
-        <div class="control-group">
-            <label>Game Mode:</label>
-            <select id="gameMode" style="background: #333; color: white; border: 1px solid #555;">
-                <option value="tag">Tag (Red chases Blue)</option>
-                <option value="hideSeek">Hide & Seek (Blue hides from Red)</option>
-                <option value="mixed">Mixed Behaviors</option>
-            </select>
+            <h4 style="color: #6666ff; margin: 12px 0 8px 0;">🔵 PREY (Blue)</h4>
+            <div class="ability-list">
+                <div class="ability-item prey-ability">
+                    <strong>Camouflage:</strong> Become invisible to hunters periodically
+                </div>
+                <div class="ability-item prey-ability">
+                    <strong>Evasion:</strong> 30% chance to avoid being tagged
+                </div>
+                <div class="ability-item prey-ability">
+                    <strong>Energy Efficient:</strong> 30% less energy consumption
+                </div>
+                <div class="ability-item prey-ability">
+                    <strong>Wall Phasing:</strong> Pass through walls (3 uses)
+                </div>
+                <div class="ability-item prey-ability">
+                    <strong>Group Healing:</strong> Enhanced cooperative healing
+                </div>
+            </div>
+
+            <h4 style="color: #66ff66; margin: 12px 0 8px 0;">🤝 Cooperation Rules</h4>
+            <div style="font-size: 10px; line-height: 1.4;">
+                • Same-type creatures can heal each other's tags<br>
+                • Healing costs energy but removes one tag<br>
+                • Creatures eliminated after 3 tags or energy depletion<br>
+                • Strategic wall-baiting can damage opponents<br>
+                • Teamwork and individual survival both matter
+            </div>
         </div>
+    </div>
 
-        <!-- Environment -->
-        <div class="control-group">
-            <label>Grid Size: <span id="gridDisplay">30</span></label>
-            <input type="range" id="gridSize" min="20" max="60" value="30">
+    <!-- ===== ANALYTICS PANEL ===== -->
+    <div class="control-panel analytics-panel">
+        <div class="panel-header" onclick="togglePanel('analytics-panel')">
+            📊 Mutation Analytics
+            <span id="analytics-panel-arrow">▼</span>
         </div>
-
-        <!-- NEW: Energy System Controls -->
-        <div class="control-group">
-            <label>Wall Density: <span id="wallDisplay">5%</span></label>
-            <input type="range" id="wallDensity" min="0" max="15" value="5">
+        <div class="panel-content" id="analytics-panel-content">
+            <h4 style="margin-bottom: 8px;">Ability Occurrence Rates</h4>
+            <div class="mutation-stats" id="mutationStats">
+                <!-- Will be populated by JavaScript -->
+            </div>
+            
+            <h4 style="margin: 12px 0 8px 0;">Top Performers</h4>
+            <div id="topPerformers" style="font-size: 10px;">
+                <!-- Will be populated by JavaScript -->
+            </div>
         </div>
+    </div>
 
-        <div class="control-group">
-            <label>Energy Decay: <span id="energyDecayDisplay">0.2</span></label>
-            <input type="range" id="energyDecay" min="0.1" max="1.0" step="0.1" value="0.2">
+    <!-- ===== NEURAL NETWORK VISUALIZATION ===== -->
+    <div class="control-panel neural-viz-panel">
+        <div class="panel-header" onclick="togglePanel('neural-viz-panel')">
+            🧠 Neural Network Viz
+            <span id="neural-viz-panel-arrow">▼</span>
         </div>
-
-        <!-- Controls -->
-        <div class="control-group">
-            <button id="pauseBtn">⏸️ Pause</button>
-            <button id="resetBtn">🔄 Reset</button>
-            <button id="evolveBtn">🧬 Force Evolution</button>
-        </div>
-
-        <!-- Statistics -->
-        <div class="stats">
-            <div>Generation: <span id="generation">1</span></div>
-            <div>Best Fitness: <span id="bestFitness">0</span></div>
-            <div>Average Fitness: <span id="avgFitness">0</span></div>
-            <div>Tags: <span id="tagCount">0</span></div>
-            <div>Alive: <span id="aliveCount">0</span></div>
-            <div>Eliminated: <span id="eliminatedCount">0</span></div>
+        <div class="panel-content" id="neural-viz-panel-content">
+            <h4 style="margin-bottom: 5px;">Best Hunter Brain</h4>
+            <canvas class="neural-canvas" id="hunterBrain" width="320" height="120"></canvas>
+            
+            <h4 style="margin: 10px 0 5px 0;">Best Prey Brain</h4>
+            <canvas class="neural-canvas" id="preyBrain" width="320" height="120"></canvas>
+            
+            <div style="font-size: 9px; margin-top: 8px; color: #888;">
+                Connections: Green=Positive, Red=Negative, Thickness=Strength
+            </div>
         </div>
     </div>
 
@@ -196,6 +475,14 @@
             // Elimination system
             MAX_TAGS_BEFORE_OUT: 3,     // How many times you can be tagged before elimination
             ENERGY_DEATH_THRESHOLD: 0, // Energy level that causes death
+            
+            // NEW: Cooperative mechanics
+            SAME_TYPE_HEAL_CHANCE: 0.8, // Chance that same-type contact removes tags
+            HEAL_ENERGY_COST: 5,        // Energy cost for healing another creature
+            
+            // NEW: Special mutation system
+            MUTATION_ACTIVATION_RATE: 0.05, // Chance to gain new abilities during mutation
+            MAX_SPECIAL_ABILITIES: 3,   // Maximum special abilities per creature
             
             // Environment
             WALL_DENSITY: 0.05,         // Percentage of grid filled with deadly walls
@@ -378,6 +665,34 @@
                     }
                 }
             }
+
+            // NEW: Mutate special abilities for creatures
+            mutateSpecialAbilities(creature) {
+                // Count current abilities
+                let currentAbilityCount = Object.values(creature.specialAbilities).filter(Boolean).length;
+                
+                if (currentAbilityCount >= CONFIG.MAX_SPECIAL_ABILITIES) return;
+                
+                // Determine which abilities can be unlocked based on creature type
+                let availableAbilities = [];
+                if (creature.type === 'HUNTER') {
+                    availableAbilities = ['packHunting', 'energyVampire', 'wallBounce', 'speedBurst', 'territorialInstinct'];
+                } else if (creature.type === 'PREY') {
+                    availableAbilities = ['camouflage', 'evasion', 'energyEfficiency', 'wallPhasing', 'groupHealing'];
+                }
+                
+                // Filter out already-acquired abilities
+                availableAbilities = availableAbilities.filter(ability => !creature.specialAbilities[ability]);
+                
+                if (availableAbilities.length === 0) return;
+                
+                // Chance to gain a new ability
+                if (Math.random() < CONFIG.MUTATION_ACTIVATION_RATE) {
+                    let newAbility = availableAbilities[Math.floor(Math.random() * availableAbilities.length)];
+                    creature.specialAbilities[newAbility] = true;
+                    console.log(`${creature.type} gained new ability: ${newAbility}`);
+                }
+            }
         }
 
         // ===== WALL CLASS =====
@@ -423,6 +738,31 @@
                 this.isAlive = true;            // Whether creature is still active
                 this.timesTagged = 0;           // How many times this creature was tagged
                 this.eliminationReason = '';   // Why creature was eliminated
+                
+                // NEW: Special abilities system
+                this.specialAbilities = {
+                    // Hunter abilities
+                    packHunting: false,         // See other hunters' targets
+                    energyVampire: false,       // Drain more energy when tagging
+                    wallBounce: false,          // Bounce off walls instead of taking damage
+                    speedBurst: false,          // Temporary speed boost when low energy
+                    territorialInstinct: false, // Gain energy when near other hunters
+                    
+                    // Prey abilities
+                    camouflage: false,          // Harder to detect by hunters
+                    evasion: false,             // Chance to avoid being tagged
+                    energyEfficiency: false,    // Use less energy when moving
+                    wallPhasing: false,         // Can pass through walls (limited uses)
+                    groupHealing: false,        // Heal nearby prey more effectively
+                };
+                this.specialAbilityUses = {     // Limited-use abilities
+                    wallPhasing: 3,             // Number of times can phase through walls
+                    speedBurst: 5,              // Number of speed bursts available
+                };
+                this.abilityCountdown = {       // Cooldowns for abilities
+                    speedBurst: 0,
+                    camouflage: 0,
+                };
                 
                 // Movement and behavior
                 this.lastMove = { x: 0, y: 0 }; // Track movement for fitness
@@ -528,11 +868,27 @@
                     for (let creature of creatures) {
                         if (creature !== this && creature.isAlive && 
                             creature.x === checkX && creature.y === checkY) {
+                            
+                            // Apply camouflage ability
+                            if (creature.specialAbilities.camouflage && 
+                                creature.abilityCountdown.camouflage > 0 && 
+                                this.type === 'HUNTER') {
+                                continue; // Camouflaged prey is invisible to hunters
+                            }
+                            
+                            // Enhanced vision for pack hunting
+                            if (this.specialAbilities.packHunting && 
+                                this.type === 'HUNTER' && creature.type === 'PREY') {
+                                return 0.9; // Enhanced target detection
+                            }
+                            
                             // Return different values based on creature type relationship
                             if (this.type === 'HUNTER' && creature.type === 'PREY') {
                                 return 0.8; // Target found!
                             } else if (this.type === 'PREY' && creature.type === 'HUNTER') {
                                 return 0.2; // Danger!
+                            } else if (this.type === creature.type) {
+                                return 0.6; // Same type - potential ally
                             } else {
                                 return 0.5; // Neutral creature
                             }
@@ -567,12 +923,24 @@
                 let newX = this.x;
                 let newY = this.y;
                 
+                // Apply speed burst ability
+                let moveDistance = 1;
+                if (this.specialAbilities.speedBurst && 
+                    this.energy < CONFIG.STARTING_ENERGY * 0.3 && 
+                    this.specialAbilityUses.speedBurst > 0 &&
+                    this.abilityCountdown.speedBurst === 0) {
+                    moveDistance = 2;
+                    this.specialAbilityUses.speedBurst--;
+                    this.abilityCountdown.speedBurst = 30; // Cooldown
+                    console.log(`${this.type} used speed burst!`);
+                }
+                
                 // Calculate new position based on direction
                 switch(direction) {
-                    case 0: newY--; break; // UP
-                    case 1: newY++; break; // DOWN
-                    case 2: newX--; break; // LEFT
-                    case 3: newX++; break; // RIGHT
+                    case 0: newY -= moveDistance; break; // UP
+                    case 1: newY += moveDistance; break; // DOWN
+                    case 2: newX -= moveDistance; break; // LEFT
+                    case 3: newX += moveDistance; break; // RIGHT
                 }
                 
                 // Check if the new position is safe
@@ -582,11 +950,18 @@
                     this.x = newX;
                     this.y = newY;
                     
-                    // Use energy for movement
-                    this.energy -= CONFIG.ENERGY_MOVE_COST;
+                    // Calculate energy cost
+                    let energyCost = CONFIG.ENERGY_MOVE_COST;
+                    if (this.specialAbilities.energyEfficiency) {
+                        energyCost *= 0.7; // 30% less energy usage
+                    }
+                    
+                    this.energy -= energyCost;
                 } else {
                     // Failed to move - check if it's because of a wall
-                    this.checkWallCollision(newX, newY);
+                    if (!this.handleWallInteraction(newX, newY)) {
+                        // Could not handle wall interaction
+                    }
                 }
                 
                 // Update creature state
@@ -595,30 +970,87 @@
                 this.timeSinceLastTag++;
                 this.timesSurvived++;
                 
+                // Update ability countdowns
+                this.updateAbilityCooldowns();
+                
                 // Lose energy over time
                 this.energy -= CONFIG.ENERGY_DECAY;
                 
-                // Gain energy for surviving (if prey/hider)
-                if (this.type === 'PREY' && this.timeSinceLastTag > 0) {
-                    this.energy += CONFIG.ENERGY_GAIN_SURVIVAL;
-                }
+                // Apply special ability effects
+                this.applyPassiveAbilities();
                 
                 // Check for elimination conditions
                 this.checkElimination();
             }
 
-            // NEW: Check collision with walls and apply damage
-            checkWallCollision(attemptedX, attemptedY) {
+            // NEW: Enhanced wall interaction with abilities
+            handleWallInteraction(attemptedX, attemptedY) {
                 for (let wall of walls) {
                     if (wall.x === attemptedX && wall.y === attemptedY) {
-                        // Hit a wall! Take damage
+                        // Check for wall phasing ability
+                        if (this.specialAbilities.wallPhasing && 
+                            this.specialAbilityUses.wallPhasing > 0) {
+                            this.specialAbilityUses.wallPhasing--;
+                            this.x = attemptedX;
+                            this.y = attemptedY;
+                            console.log(`${this.type} phased through wall! Uses left: ${this.specialAbilityUses.wallPhasing}`);
+                            return true;
+                        }
+                        
+                        // Check for wall bounce ability
+                        if (this.specialAbilities.wallBounce) {
+                            // Bounce back to previous position with no damage
+                            console.log(`${this.type} bounced off wall!`);
+                            return true;
+                        }
+                        
+                        // Normal wall collision - take damage
                         this.energy -= CONFIG.WALL_KILL_ENERGY;
                         console.log(`${this.type} creature hit wall! Energy: ${this.energy.toFixed(1)}`);
                         
                         // Add visual feedback for wall collision
                         this.lastWallHit = 10; // Frames to show damage effect
-                        break;
+                        return false;
                     }
+                }
+                return true;
+            }
+
+            // NEW: Update ability cooldowns
+            updateAbilityCooldowns() {
+                Object.keys(this.abilityCountdown).forEach(ability => {
+                    if (this.abilityCountdown[ability] > 0) {
+                        this.abilityCountdown[ability]--;
+                    }
+                });
+                
+                // Activate camouflage periodically for prey
+                if (this.specialAbilities.camouflage && 
+                    this.type === 'PREY' && 
+                    this.abilityCountdown.camouflage === 0 &&
+                    Math.random() < 0.05) {
+                    this.abilityCountdown.camouflage = 60; // Active for 60 frames
+                }
+            }
+
+            // NEW: Apply passive special abilities
+            applyPassiveAbilities() {
+                // Territorial instinct for hunters
+                if (this.specialAbilities.territorialInstinct && this.type === 'HUNTER') {
+                    let nearbyHunters = creatures.filter(c => 
+                        c !== this && c.isAlive && c.type === 'HUNTER' &&
+                        Math.abs(c.x - this.x) <= 2 && Math.abs(c.y - this.y) <= 2
+                    ).length;
+                    this.energy += nearbyHunters * 0.2;
+                }
+                
+                // Gain energy for surviving (if prey/hider)
+                if (this.type === 'PREY' && this.timeSinceLastTag > 0) {
+                    let survivalBonus = CONFIG.ENERGY_GAIN_SURVIVAL;
+                    if (this.specialAbilities.energyEfficiency) {
+                        survivalBonus *= 1.3; // 30% bonus
+                    }
+                    this.energy += survivalBonus;
                 }
             }
 
@@ -743,23 +1175,75 @@
                         );
                         
                         if (distance <= CONFIG.TAG_DISTANCE) {
-                            // Tag occurred!
+                            // Check for same-type cooperative healing
+                            if (this.type === other.type && 
+                                (this.timesTagged > 0 || other.timesTagged > 0) &&
+                                Math.random() < CONFIG.SAME_TYPE_HEAL_CHANCE) {
+                                this.performCooperativeHealing(other);
+                                return;
+                            }
+                            
+                            // Hunter tagging prey
                             if (this.type === 'HUNTER' && other.type === 'PREY') {
-                                // Hunter tags prey
+                                // Check for evasion ability
+                                if (other.specialAbilities.evasion && Math.random() < 0.3) {
+                                    console.log(`Prey evaded hunter's tag!`);
+                                    return;
+                                }
+                                
+                                // Successful tag
                                 this.tags++;
                                 other.timesTagged++;
                                 this.timeSinceLastTag = 0;
                                 other.timeSinceLastTag = 0;
                                 
-                                // Energy transfer
-                                this.energy += CONFIG.ENERGY_GAIN_TAG;
-                                other.energy -= CONFIG.ENERGY_GAIN_TAG * 0.5;
+                                // Calculate energy transfer
+                                let energyGain = CONFIG.ENERGY_GAIN_TAG;
+                                let energyLoss = CONFIG.ENERGY_GAIN_TAG * 0.5;
+                                
+                                // Energy vampire ability
+                                if (this.specialAbilities.energyVampire) {
+                                    energyGain *= 1.5;
+                                    energyLoss *= 1.2;
+                                }
+                                
+                                this.energy += energyGain;
+                                other.energy -= energyLoss;
                                 
                                 stats.tags++;
                                 console.log(`Hunter tagged prey! Hunter energy: ${this.energy.toFixed(1)}, Prey energy: ${other.energy.toFixed(1)}, Prey tags: ${other.timesTagged}`);
                             }
                         }
                     }
+                }
+            }
+
+            // NEW: Cooperative healing between same-type creatures
+            performCooperativeHealing(other) {
+                if (this.energy < CONFIG.HEAL_ENERGY_COST && 
+                    other.energy < CONFIG.HEAL_ENERGY_COST) {
+                    return; // Not enough energy for either to heal
+                }
+                
+                let healer = this.energy > other.energy ? this : other;
+                let patient = healer === this ? other : this;
+                
+                if (patient.timesTagged > 0) {
+                    // Remove one tag from the patient
+                    patient.timesTagged--;
+                    healer.energy -= CONFIG.HEAL_ENERGY_COST;
+                    
+                    // Group healing ability bonus
+                    if (healer.specialAbilities.groupHealing) {
+                        patient.energy += 10; // Bonus healing
+                        console.log(`Enhanced group healing performed!`);
+                    }
+                    
+                    console.log(`${healer.type} healed ${patient.type}! Patient tags: ${patient.timesTagged}, Healer energy: ${healer.energy.toFixed(1)}`);
+                    
+                    // Visual feedback
+                    healer.lastHeal = 20;
+                    patient.lastHealed = 20;
                 }
             }
 
@@ -797,6 +1281,29 @@
                     this.lastWallHit--;
                 }
                 
+                // Healing effect
+                if (this.lastHeal && this.lastHeal > 0) {
+                    ctx.fillStyle = '#00ff00';
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                    this.lastHeal--;
+                }
+                
+                // Being healed effect
+                if (this.lastHealed && this.lastHealed > 0) {
+                    ctx.fillStyle = '#00ffff';
+                    ctx.globalAlpha = 0.4;
+                    ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                    this.lastHealed--;
+                }
+                
+                // Camouflage effect
+                if (this.specialAbilities.camouflage && this.abilityCountdown.camouflage > 0) {
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 0.3; // Very transparent when camouflaged
+                    ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                }
+                
                 // Tag indicator (if recently tagged)
                 if (this.timesTagged > 0 && this.timeSinceLastTag < 30) {
                     ctx.fillStyle = '#ffff00';
@@ -804,7 +1311,44 @@
                     ctx.fillRect(pixelX + 2, pixelY + 2, CONFIG.GRID_SIZE - 5, CONFIG.GRID_SIZE - 5);
                 }
                 
+                // Special ability indicators
+                this.drawAbilityIndicators(pixelX, pixelY);
+                
                 ctx.globalAlpha = 1.0;
+            }
+
+            // NEW: Draw special ability indicators
+            drawAbilityIndicators(x, y) {
+                let indicatorSize = 3;
+                let offsetY = 0;
+                
+                // Active abilities get small colored dots
+                if (this.specialAbilities.packHunting && this.type === 'HUNTER') {
+                    ctx.fillStyle = '#ff8800';
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillRect(x + CONFIG.GRID_SIZE - 5, y + offsetY, indicatorSize, indicatorSize);
+                    offsetY += 4;
+                }
+                
+                if (this.specialAbilities.camouflage && this.abilityCountdown.camouflage > 0) {
+                    ctx.fillStyle = '#8800ff';
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillRect(x + CONFIG.GRID_SIZE - 5, y + offsetY, indicatorSize, indicatorSize);
+                    offsetY += 4;
+                }
+                
+                if (this.specialAbilities.wallPhasing && this.specialAbilityUses.wallPhasing > 0) {
+                    ctx.fillStyle = '#00ff88';
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillRect(x + CONFIG.GRID_SIZE - 5, y + offsetY, indicatorSize, indicatorSize);
+                    offsetY += 4;
+                }
+                
+                if (this.specialAbilities.speedBurst && this.specialAbilityUses.speedBurst > 0) {
+                    ctx.fillStyle = '#ffff00';
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillRect(x + CONFIG.GRID_SIZE - 5, y + offsetY, indicatorSize, indicatorSize);
+                }
             }
 
             // NEW: Draw energy bar above creature
@@ -905,6 +1449,9 @@
                 
                 // Mutate the child
                 child.brain.mutate(CONFIG.MUTATION_RATE);
+                
+                // NEW: Mutate special abilities
+                child.brain.mutateSpecialAbilities(child);
                 
                 newPopulation.push(child);
             }
@@ -1128,10 +1675,30 @@
         function updateDisplay() {
             document.getElementById('generation').textContent = generation;
             document.getElementById('bestFitness').textContent = stats.bestFitness.toFixed(2);
-            document.getElementById('avgFitness').textContent = stats.avgFitness.toFixed(2);
-            document.getElementById('tagCount').textContent = stats.tags;
             document.getElementById('aliveCount').textContent = stats.aliveCount;
             document.getElementById('eliminatedCount').textContent = stats.eliminatedCount;
+            
+            // Count active abilities
+            let totalAbilities = creatures.reduce((sum, creature) => {
+                return sum + Object.values(creature.specialAbilities).filter(Boolean).length;
+            }, 0);
+            document.getElementById('abilityCount').textContent = totalAbilities;
+
+            // Update analytics panel every few frames to avoid performance issues
+            if (frameCount % 30 === 0) {
+                updateAnalytics();
+                
+                // Update neural network visualizations
+                const bestHunter = creatures
+                    .filter(c => c.type === 'hunter' && !c.eliminated)
+                    .sort((a, b) => b.fitness - a.fitness)[0];
+                const bestPrey = creatures
+                    .filter(c => c.type === 'prey' && !c.eliminated)
+                    .sort((a, b) => b.fitness - a.fitness)[0];
+                
+                if (bestHunter) drawNeuralNetwork('hunterBrain', bestHunter);
+                if (bestPrey) drawNeuralNetwork('preyBrain', bestPrey);
+            }
         }
 
         // ===== EVENT LISTENERS =====
@@ -1166,10 +1733,10 @@
                 document.getElementById('wallDisplay').textContent = e.target.value + '%';
             });
 
-            // NEW: Energy decay control
-            document.getElementById('energyDecay').addEventListener('input', function(e) {
-                CONFIG.ENERGY_DECAY = parseFloat(e.target.value);
-                document.getElementById('energyDecayDisplay').textContent = e.target.value;
+            // NEW: Ability mutation rate control
+            document.getElementById('abilityMutation').addEventListener('input', function(e) {
+                CONFIG.MUTATION_ACTIVATION_RATE = parseFloat(e.target.value) / 100;
+                document.getElementById('abilityMutationDisplay').textContent = e.target.value + '%';
             });
 
             // Game mode selection
@@ -1206,6 +1773,167 @@
                 canvas.width = CONFIG.CANVAS_WIDTH;
                 canvas.height = CONFIG.CANVAS_HEIGHT;
             });
+
+            // Initialize panel states (all collapsed by default except main controls)
+            togglePanel('info-panel');
+            togglePanel('analytics-panel'); 
+            togglePanel('neural-viz-panel');
+        }
+
+        // ===== NEW UI FUNCTIONS =====
+        // Toggle collapsible panels
+        function togglePanel(panelId) {
+            const content = document.getElementById(panelId + '-content');
+            const arrow = document.getElementById(panelId + '-arrow');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                arrow.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                arrow.textContent = '▶';
+            }
+        }
+
+        // Update analytics panel with mutation statistics
+        function updateAnalytics() {
+            // Count ability occurrences
+            const abilityStats = {
+                // Hunter abilities
+                packHunting: 0,
+                energyVampire: 0,
+                wallBounce: 0,
+                speedBurst: 0,
+                territorial: 0,
+                // Prey abilities  
+                camouflage: 0,
+                evasion: 0,
+                energyEfficient: 0,
+                wallPhasing: 0,
+                groupHealing: 0
+            };
+
+            // Count current abilities in population
+            creatures.forEach(creature => {
+                Object.keys(creature.specialAbilities).forEach(ability => {
+                    if (creature.specialAbilities[ability] && abilityStats.hasOwnProperty(ability)) {
+                        abilityStats[ability]++;
+                    }
+                });
+            });
+
+            // Generate HTML for mutation stats
+            let statsHTML = '<div class="mutation-grid">';
+            Object.entries(abilityStats).forEach(([ability, count]) => {
+                const percentage = creatures.length > 0 ? Math.round((count / creatures.length) * 100) : 0;
+                const abilityName = ability.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                statsHTML += `<div class="stat-item">${abilityName}: ${count} (${percentage}%)</div>`;
+            });
+            statsHTML += '</div>';
+
+            document.getElementById('mutationStats').innerHTML = statsHTML;
+
+            // Update top performers
+            const sortedCreatures = [...creatures]
+                .filter(c => !c.eliminated)
+                .sort((a, b) => b.fitness - a.fitness);
+            
+            let topHTML = '';
+            for (let i = 0; i < Math.min(3, sortedCreatures.length); i++) {
+                const creature = sortedCreatures[i];
+                const abilities = Object.keys(creature.specialAbilities)
+                    .filter(ability => creature.specialAbilities[ability])
+                    .map(ability => ability.replace(/([A-Z])/g, ' $1'))
+                    .join(', ');
+                
+                topHTML += `<div class="top-performer">
+                    #${i+1} ${creature.type}: Fitness ${creature.fitness.toFixed(1)}<br>
+                    <span style="color: #888;">${abilities || 'No special abilities'}</span>
+                </div>`;
+            }
+
+            document.getElementById('topPerformers').innerHTML = topHTML;
+        }
+
+        // Draw neural network visualization
+        function drawNeuralNetwork(canvasId, creature) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || !creature) return;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const network = creature.brain;
+            const inputs = 8;
+            const hidden = 6;
+            const outputs = 4;
+            
+            // Node positions
+            const inputY = Array.from({length: inputs}, (_, i) => 20 + i * 10);
+            const hiddenY = Array.from({length: hidden}, (_, i) => 30 + i * 15);
+            const outputY = Array.from({length: outputs}, (_, i) => 35 + i * 20);
+            
+            // Draw connections
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 0.5;
+            
+            // Input to hidden connections
+            for (let i = 0; i < inputs; i++) {
+                for (let h = 0; h < hidden; h++) {
+                    const weight = network.weights1[i][h];
+                    ctx.strokeStyle = weight > 0 ? '#00ff00' : '#ff0000';
+                    ctx.lineWidth = Math.abs(weight) * 2;
+                    ctx.globalAlpha = 0.6;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(30, inputY[i]);
+                    ctx.lineTo(160, hiddenY[h]);
+                    ctx.stroke();
+                }
+            }
+            
+            // Hidden to output connections
+            for (let h = 0; h < hidden; h++) {
+                for (let o = 0; o < outputs; o++) {
+                    const weight = network.weights2[h][o];
+                    ctx.strokeStyle = weight > 0 ? '#00ff00' : '#ff0000';
+                    ctx.lineWidth = Math.abs(weight) * 2;
+                    ctx.globalAlpha = 0.6;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(160, hiddenY[h]);
+                    ctx.lineTo(290, outputY[o]);
+                    ctx.stroke();
+                }
+            }
+            
+            ctx.globalAlpha = 1.0;
+            
+            // Draw nodes
+            ctx.fillStyle = '#333';
+            
+            // Input nodes
+            inputY.forEach(y => {
+                ctx.beginPath();
+                ctx.arc(30, y, 3, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+            
+            // Hidden nodes
+            ctx.fillStyle = '#666';
+            hiddenY.forEach(y => {
+                ctx.beginPath();
+                ctx.arc(160, y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+            
+            // Output nodes
+            ctx.fillStyle = creature.type === 'hunter' ? '#ff6666' : '#6666ff';
+            outputY.forEach(y => {
+                ctx.beginPath();
+                ctx.arc(290, y, 4, 0, 2 * Math.PI);
+                ctx.fill();
+            });
         }
 
         // ===== START THE SIMULATION =====
@@ -1223,25 +1951,41 @@
          * 6. Create new game modes by modifying the gameMode switch statements
          * 7. Adjust evolution parameters in the genetic algorithm functions
          * 
-         * NEW FEATURES ADDED:
-         * - Energy system: Creatures lose energy over time and when moving
-         * - Elimination: Creatures die from energy depletion or being tagged 3 times
-         * - Collision detection: Creatures cannot occupy the same space
-         * - Deadly walls: Touch walls to lose energy (configurable)
-         * - Enhanced vision: Creatures can see walls and different creature types
-         * - Visual feedback: Energy bars, elimination indicators, wall collision effects
+         * LATEST FEATURES ADDED:
+         * - Cooperative tag removal: Same-type creatures can heal each other's tags
+         * - Special abilities system: Unique mutations for hunters vs prey
+         * - Enhanced strategic depth: Wall-baiting, teamwork, evasion tactics
+         * 
+         * HUNTER SPECIAL ABILITIES:
+         * - Pack Hunting: Enhanced detection of prey
+         * - Energy Vampire: Drain more energy when tagging
+         * - Wall Bounce: Bounce off walls without damage
+         * - Speed Burst: Temporary speed boost when low energy
+         * - Territorial Instinct: Gain energy near other hunters
+         * 
+         * PREY SPECIAL ABILITIES:
+         * - Camouflage: Become invisible to hunters periodically
+         * - Evasion: Chance to avoid being tagged
+         * - Energy Efficiency: Use less energy when moving
+         * - Wall Phasing: Pass through walls (limited uses)
+         * - Group Healing: Enhanced healing of nearby prey
+         * 
+         * STRATEGIC GAMEPLAY:
+         * - Hunters can work together to corner prey
+         * - Prey can lead hunters into walls for damage
+         * - Same-type cooperation removes tags and provides healing
+         * - Special abilities create unique creature lineages
+         * - Energy management becomes crucial for survival
          * 
          * EXPERIMENT IDEAS:
-         * - Adjust energy gain/loss rates for different behaviors
-         * - Create safe zones where creatures can recover energy
-         * - Add different wall types (some beneficial, some harmful)
-         * - Implement pack hunting or group behaviors
-         * - Add seasonal effects (walls appear/disappear over time)
-         * - Create power-ups that give temporary abilities
-         * - Add different creature species with unique energy requirements
-         * - Implement breeding mechanics where successful creatures reproduce
-         * - Add sound/vibration detection as additional inputs
-         * - Create maze-like environments with strategic wall placement
+         * - Create pack-hunting strategies by adjusting hunter abilities
+         * - Test prey survival techniques with different ability combinations
+         * - Adjust wall density to create maze-like tactical environments
+         * - Modify ability mutation rates to see rapid evolution
+         * - Create tournaments between different ability combinations
+         * - Add environmental changes that favor different strategies
+         * - Implement predator-prey population dynamics
+         * - Create specialized roles within hunter/prey groups
          * =============================== */
     </script>
 </body>
