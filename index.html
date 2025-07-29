@@ -1,7 +1,916 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEAT Creatures - Tag & Hide and Seek</title>
+    <style>
+        /* ===== VISUAL STYLING ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        /* Control panel styling */
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #333;
+            z-index: 1000;
+            min-width: 300px;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ccc;
+            font-size: 12px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 2px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+        }
+
+        button {
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        .stats {
+            font-size: 11px;
+            margin-top: 10px;
+            color: #aaa;
+        }
+
+        /* Canvas styling */
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+    </style>
+</head>
 <body>
-<h1>Hello World</h1>
-<p>I'm hosted with GitHub Pages.</p>
+    <!-- ===== CONTROL PANEL ===== -->
+    <div class="controls">
+        <h3>🧠 NEAT Creatures Control Panel</h3>
+        
+        <!-- Population Settings -->
+        <div class="control-group">
+            <label>Population Size: <span id="popDisplay">50</span></label>
+            <input type="range" id="populationSize" min="10" max="200" value="50">
+        </div>
+
+        <!-- Speed Controls -->
+        <div class="control-group">
+            <label>Simulation Speed: <span id="speedDisplay">1.0x</span></label>
+            <input type="range" id="simSpeed" min="0.1" max="3.0" step="0.1" value="1.0">
+        </div>
+
+        <!-- Neural Network Parameters -->
+        <div class="control-group">
+            <label>Mutation Rate: <span id="mutationDisplay">0.1</span></label>
+            <input type="range" id="mutationRate" min="0.01" max="0.5" step="0.01" value="0.1">
+        </div>
+
+        <!-- Game Mode -->
+        <div class="control-group">
+            <label>Game Mode:</label>
+            <select id="gameMode" style="background: #333; color: white; border: 1px solid #555;">
+                <option value="tag">Tag (Red chases Blue)</option>
+                <option value="hideSeek">Hide & Seek (Blue hides from Red)</option>
+                <option value="mixed">Mixed Behaviors</option>
+            </select>
+        </div>
+
+        <!-- Environment -->
+        <div class="control-group">
+            <label>Grid Size: <span id="gridDisplay">30</span></label>
+            <input type="range" id="gridSize" min="20" max="60" value="30">
+        </div>
+
+        <!-- Controls -->
+        <div class="control-group">
+            <button id="pauseBtn">⏸️ Pause</button>
+            <button id="resetBtn">🔄 Reset</button>
+            <button id="evolveBtn">🧬 Force Evolution</button>
+        </div>
+
+        <!-- Statistics -->
+        <div class="stats">
+            <div>Generation: <span id="generation">1</span></div>
+            <div>Best Fitness: <span id="bestFitness">0</span></div>
+            <div>Average Fitness: <span id="avgFitness">0</span></div>
+            <div>Tags: <span id="tagCount">0</span></div>
+        </div>
+    </div>
+
+    <!-- ===== GAME CANVAS ===== -->
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /* ===============================
+         * NEAT CREATURES SIMULATION
+         * A modular neural network ecosystem
+         * =============================== */
+
+        // ===== CONFIGURATION PARAMETERS =====
+        // These are the main tuning parameters you can easily modify
+        const CONFIG = {
+            // Visual settings
+            CANVAS_WIDTH: window.innerWidth,
+            CANVAS_HEIGHT: window.innerHeight,
+            
+            // Grid and creature settings
+            GRID_SIZE: 30,              // Size of each grid cell
+            POPULATION_SIZE: 50,        // Number of creatures
+            
+            // Neural network parameters
+            INPUT_NODES: 8,             // What creatures can "see"
+            HIDDEN_NODES: 6,            // Processing power
+            OUTPUT_NODES: 4,            // Movement directions
+            
+            // Evolution parameters
+            MUTATION_RATE: 0.1,         // How much creatures change between generations
+            CROSSOVER_RATE: 0.7,       // How often parents combine traits
+            ELITE_PERCENTAGE: 0.2,     // Top performers that survive unchanged
+            
+            // Game mechanics
+            CREATURE_SPEED: 1,          // How fast creatures move
+            VISION_RANGE: 3,            // How far creatures can see
+            TAG_DISTANCE: 1,            // Distance needed to tag
+            
+            // Evolution timing
+            GENERATION_LENGTH: 2000,    // Frames before evolution
+            
+            // Colors for different creature types
+            COLORS: {
+                HUNTER: '#ff4444',      // Red - aggressive/chaser
+                PREY: '#4444ff',        // Blue - defensive/hider
+                NEUTRAL: '#44ff44',     // Green - balanced
+                WALL: '#666666'         // Gray - obstacles
+            }
+        };
+
+        // ===== GLOBAL VARIABLES =====
+        let canvas, ctx;
+        let creatures = [];
+        let walls = [];
+        let generation = 1;
+        let frameCount = 0;
+        let isPaused = false;
+        let gameMode = 'tag';
+        let stats = {
+            tags: 0,
+            bestFitness: 0,
+            avgFitness: 0
+        };
+
+        // ===== NEURAL NETWORK CLASS =====
+        // This represents the "brain" of each creature
+        class NeuralNetwork {
+            constructor() {
+                // Initialize random weights for connections between nodes
+                // Input layer to hidden layer connections
+                this.inputToHidden = this.createMatrix(CONFIG.INPUT_NODES, CONFIG.HIDDEN_NODES);
+                
+                // Hidden layer to output layer connections
+                this.hiddenToOutput = this.createMatrix(CONFIG.HIDDEN_NODES, CONFIG.OUTPUT_NODES);
+                
+                // Bias values (help with decision making)
+                this.hiddenBias = this.createArray(CONFIG.HIDDEN_NODES);
+                this.outputBias = this.createArray(CONFIG.OUTPUT_NODES);
+                
+                // Initialize with random values
+                this.randomize();
+            }
+
+            // Create a matrix filled with zeros
+            createMatrix(rows, cols) {
+                let matrix = [];
+                for (let i = 0; i < rows; i++) {
+                    matrix[i] = new Array(cols).fill(0);
+                }
+                return matrix;
+            }
+
+            // Create an array filled with zeros
+            createArray(size) {
+                return new Array(size).fill(0);
+            }
+
+            // Fill all weights with random values between -1 and 1
+            randomize() {
+                // Randomize input to hidden connections
+                for (let i = 0; i < this.inputToHidden.length; i++) {
+                    for (let j = 0; j < this.inputToHidden[i].length; j++) {
+                        this.inputToHidden[i][j] = (Math.random() * 2) - 1;
+                    }
+                }
+
+                // Randomize hidden to output connections
+                for (let i = 0; i < this.hiddenToOutput.length; i++) {
+                    for (let j = 0; j < this.hiddenToOutput[i].length; j++) {
+                        this.hiddenToOutput[i][j] = (Math.random() * 2) - 1;
+                    }
+                }
+
+                // Randomize biases
+                for (let i = 0; i < this.hiddenBias.length; i++) {
+                    this.hiddenBias[i] = (Math.random() * 2) - 1;
+                }
+                for (let i = 0; i < this.outputBias.length; i++) {
+                    this.outputBias[i] = (Math.random() * 2) - 1;
+                }
+            }
+
+            // Process inputs through the network to get outputs
+            feedForward(inputs) {
+                // Calculate hidden layer values
+                let hidden = [];
+                for (let i = 0; i < CONFIG.HIDDEN_NODES; i++) {
+                    let sum = this.hiddenBias[i];
+                    for (let j = 0; j < CONFIG.INPUT_NODES; j++) {
+                        sum += inputs[j] * this.inputToHidden[j][i];
+                    }
+                    hidden[i] = this.activate(sum); // Apply activation function
+                }
+
+                // Calculate output layer values
+                let outputs = [];
+                for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
+                    let sum = this.outputBias[i];
+                    for (let j = 0; j < CONFIG.HIDDEN_NODES; j++) {
+                        sum += hidden[j] * this.hiddenToOutput[j][i];
+                    }
+                    outputs[i] = this.activate(sum);
+                }
+
+                return outputs;
+            }
+
+            // Activation function - keeps values between 0 and 1
+            activate(x) {
+                return 1 / (1 + Math.exp(-x)); // Sigmoid function
+            }
+
+            // Create a copy of this neural network
+            copy() {
+                let copy = new NeuralNetwork();
+                
+                // Copy all weights and biases
+                for (let i = 0; i < this.inputToHidden.length; i++) {
+                    for (let j = 0; j < this.inputToHidden[i].length; j++) {
+                        copy.inputToHidden[i][j] = this.inputToHidden[i][j];
+                    }
+                }
+
+                for (let i = 0; i < this.hiddenToOutput.length; i++) {
+                    for (let j = 0; j < this.hiddenToOutput[i].length; j++) {
+                        copy.hiddenToOutput[i][j] = this.hiddenToOutput[i][j];
+                    }
+                }
+
+                for (let i = 0; i < this.hiddenBias.length; i++) {
+                    copy.hiddenBias[i] = this.hiddenBias[i];
+                }
+
+                for (let i = 0; i < this.outputBias.length; i++) {
+                    copy.outputBias[i] = this.outputBias[i];
+                }
+
+                return copy;
+            }
+
+            // Mutate the network (make small random changes)
+            mutate(rate) {
+                // Mutate input to hidden weights
+                for (let i = 0; i < this.inputToHidden.length; i++) {
+                    for (let j = 0; j < this.inputToHidden[i].length; j++) {
+                        if (Math.random() < rate) {
+                            this.inputToHidden[i][j] += (Math.random() * 0.2) - 0.1;
+                        }
+                    }
+                }
+
+                // Mutate hidden to output weights
+                for (let i = 0; i < this.hiddenToOutput.length; i++) {
+                    for (let j = 0; j < this.hiddenToOutput[i].length; j++) {
+                        if (Math.random() < rate) {
+                            this.hiddenToOutput[i][j] += (Math.random() * 0.2) - 0.1;
+                        }
+                    }
+                }
+
+                // Mutate biases
+                for (let i = 0; i < this.hiddenBias.length; i++) {
+                    if (Math.random() < rate) {
+                        this.hiddenBias[i] += (Math.random() * 0.2) - 0.1;
+                    }
+                }
+
+                for (let i = 0; i < this.outputBias.length; i++) {
+                    if (Math.random() < rate) {
+                        this.outputBias[i] += (Math.random() * 0.2) - 0.1;
+                    }
+                }
+            }
+        }
+
+        // ===== CREATURE CLASS =====
+        // Represents individual creatures in the simulation
+        class Creature {
+            constructor(x, y, type = 'NEUTRAL') {
+                // Position on the grid
+                this.x = x || Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE));
+                this.y = y || Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE));
+                
+                // Creature properties
+                this.type = type;               // HUNTER, PREY, or NEUTRAL
+                this.brain = new NeuralNetwork(); // The creature's neural network
+                this.fitness = 0;               // How well this creature performs
+                this.energy = 100;              // Energy level (affects survival)
+                this.age = 0;                   // How long the creature has lived
+                
+                // Movement and behavior
+                this.lastMove = { x: 0, y: 0 }; // Track movement for fitness
+                this.tags = 0;                  // Number of successful tags
+                this.timeAlive = 0;             // Survival time
+                this.timeSinceLastTag = 0;      // Used for fitness calculation
+            }
+
+            // Get sensory input from the environment
+            getInputs() {
+                let inputs = [];
+                
+                // Vision system - look in 8 directions around the creature
+                const directions = [
+                    [-1, -1], [-1, 0], [-1, 1],  // Top row
+                    [0, -1],           [0, 1],    // Middle row (skip center)
+                    [1, -1],  [1, 0],  [1, 1]    // Bottom row
+                ];
+
+                for (let dir of directions) {
+                    let nearestCreature = this.findNearestCreature(dir[0], dir[1]);
+                    
+                    // Input represents: distance to nearest creature in this direction
+                    // 0 = very close, 1 = very far
+                    inputs.push(nearestCreature);
+                }
+
+                return inputs;
+            }
+
+            // Find the nearest creature in a specific direction
+            findNearestCreature(dirX, dirY) {
+                let minDistance = CONFIG.VISION_RANGE;
+                
+                // Check each position in the direction up to vision range
+                for (let distance = 1; distance <= CONFIG.VISION_RANGE; distance++) {
+                    let checkX = this.x + (dirX * distance);
+                    let checkY = this.y + (dirY * distance);
+                    
+                    // Check bounds
+                    if (checkX < 0 || checkX >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
+                        checkY < 0 || checkY >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
+                        return 0; // Hit boundary - very close obstacle
+                    }
+                    
+                    // Check for other creatures
+                    for (let creature of creatures) {
+                        if (creature !== this && creature.x === checkX && creature.y === checkY) {
+                            return 1 - (distance / CONFIG.VISION_RANGE); // Closer = higher value
+                        }
+                    }
+                }
+                
+                return 0; // Nothing found in range
+            }
+
+            // Make a decision about movement
+            think() {
+                let inputs = this.getInputs();
+                let outputs = this.brain.feedForward(inputs);
+                
+                // Outputs represent desire to move in each direction
+                // [UP, DOWN, LEFT, RIGHT]
+                let maxOutput = Math.max(...outputs);
+                let chosenDirection = outputs.indexOf(maxOutput);
+                
+                // Move based on the neural network's decision
+                this.move(chosenDirection);
+            }
+
+            // Move the creature in a chosen direction
+            move(direction) {
+                let newX = this.x;
+                let newY = this.y;
+                
+                // Calculate new position based on direction
+                switch(direction) {
+                    case 0: newY--; break; // UP
+                    case 1: newY++; break; // DOWN
+                    case 2: newX--; break; // LEFT
+                    case 3: newX++; break; // RIGHT
+                }
+                
+                // Check bounds and collisions
+                if (this.isValidPosition(newX, newY)) {
+                    this.lastMove.x = newX - this.x;
+                    this.lastMove.y = newY - this.y;
+                    this.x = newX;
+                    this.y = newY;
+                    
+                    // Use energy for movement
+                    this.energy -= 0.1;
+                }
+                
+                this.age++;
+                this.timeAlive++;
+                this.timeSinceLastTag++;
+            }
+
+            // Check if a position is valid (not occupied, within bounds)
+            isValidPosition(x, y) {
+                // Check boundaries
+                if (x < 0 || x >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
+                    y < 0 || y >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
+                    return false;
+                }
+                
+                // Check for other creatures (optional collision)
+                // Commented out to allow creatures to occupy same space for tagging
+                /*
+                for (let creature of creatures) {
+                    if (creature !== this && creature.x === x && creature.y === y) {
+                        return false;
+                    }
+                }
+                */
+                
+                return true;
+            }
+
+            // Calculate fitness based on the current game mode
+            calculateFitness() {
+                switch(gameMode) {
+                    case 'tag':
+                        if (this.type === 'HUNTER') {
+                            // Hunters are rewarded for tagging and moving
+                            this.fitness = (this.tags * 100) + (this.timeAlive * 0.1) + 
+                                          (Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y)) * 0.5;
+                        } else {
+                            // Prey is rewarded for surviving and avoiding hunters
+                            this.fitness = (this.timeAlive * 1.0) - (this.tags * 50) +
+                                          (this.timeSinceLastTag * 0.1);
+                        }
+                        break;
+                        
+                    case 'hideSeek':
+                        if (this.type === 'PREY') {
+                            // Prey tries to hide (stay away from others)
+                            this.fitness = this.timeAlive + (this.getAverageDistanceToOthers() * 10);
+                        } else {
+                            // Hunters try to find prey
+                            this.fitness = (this.tags * 100) + (this.timeAlive * 0.1);
+                        }
+                        break;
+                        
+                    case 'mixed':
+                        // Balanced fitness for exploration and interaction
+                        this.fitness = (this.timeAlive * 0.5) + (this.tags * 50) + 
+                                      (Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y)) * 1.0;
+                        break;
+                }
+                
+                // Ensure fitness is never negative
+                this.fitness = Math.max(0, this.fitness);
+            }
+
+            // Helper function to calculate average distance to other creatures
+            getAverageDistanceToOthers() {
+                if (creatures.length <= 1) return 0;
+                
+                let totalDistance = 0;
+                let count = 0;
+                
+                for (let other of creatures) {
+                    if (other !== this) {
+                        let distance = Math.sqrt(
+                            Math.pow(this.x - other.x, 2) + 
+                            Math.pow(this.y - other.y, 2)
+                        );
+                        totalDistance += distance;
+                        count++;
+                    }
+                }
+                
+                return count > 0 ? totalDistance / count : 0;
+            }
+
+            // Check for tagging with other creatures
+            checkForTags() {
+                for (let other of creatures) {
+                    if (other !== this) {
+                        let distance = Math.sqrt(
+                            Math.pow(this.x - other.x, 2) + 
+                            Math.pow(this.y - other.y, 2)
+                        );
+                        
+                        if (distance <= CONFIG.TAG_DISTANCE) {
+                            // Tag occurred!
+                            if (this.type === 'HUNTER' && other.type === 'PREY') {
+                                this.tags++;
+                                other.tags++; // Prey also gets tagged
+                                this.timeSinceLastTag = 0;
+                                stats.tags++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Draw the creature on the canvas
+            draw() {
+                let pixelX = this.x * CONFIG.GRID_SIZE;
+                let pixelY = this.y * CONFIG.GRID_SIZE;
+                
+                // Choose color based on type
+                let color = CONFIG.COLORS[this.type];
+                
+                // Add some transparency based on energy
+                let alpha = Math.max(0.3, this.energy / 100);
+                
+                ctx.fillStyle = color;
+                ctx.globalAlpha = alpha;
+                
+                // Draw the creature as a square
+                ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                
+                // Draw fitness indicator (brightness)
+                if (this.fitness > 0) {
+                    ctx.fillStyle = 'white';
+                    ctx.globalAlpha = Math.min(0.3, this.fitness / 1000);
+                    ctx.fillRect(pixelX + 2, pixelY + 2, CONFIG.GRID_SIZE - 5, CONFIG.GRID_SIZE - 5);
+                }
+                
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // ===== GENETIC ALGORITHM FUNCTIONS =====
+        // These functions handle evolution between generations
+
+        // Create the next generation through evolution
+        function evolvePopulation() {
+            // Calculate fitness for all creatures
+            creatures.forEach(creature => creature.calculateFitness());
+            
+            // Sort by fitness (highest first)
+            creatures.sort((a, b) => b.fitness - a.fitness);
+            
+            // Update statistics
+            updateStats();
+            
+            let newPopulation = [];
+            let eliteCount = Math.floor(CONFIG.POPULATION_SIZE * CONFIG.ELITE_PERCENTAGE);
+            
+            // Keep the best performers (elitism)
+            for (let i = 0; i < eliteCount; i++) {
+                let elite = new Creature(
+                    Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE)),
+                    Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE)),
+                    creatures[i].type
+                );
+                elite.brain = creatures[i].brain.copy();
+                newPopulation.push(elite);
+            }
+            
+            // Create offspring for the rest of the population
+            while (newPopulation.length < CONFIG.POPULATION_SIZE) {
+                // Select two parents using tournament selection
+                let parent1 = tournamentSelection();
+                let parent2 = tournamentSelection();
+                
+                // Create child
+                let child = new Creature(
+                    Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE)),
+                    Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE)),
+                    Math.random() < 0.5 ? parent1.type : parent2.type
+                );
+                
+                // Crossover (combine parent brains)
+                if (Math.random() < CONFIG.CROSSOVER_RATE) {
+                    child.brain = crossover(parent1.brain, parent2.brain);
+                } else {
+                    child.brain = parent1.brain.copy();
+                }
+                
+                // Mutate the child
+                child.brain.mutate(CONFIG.MUTATION_RATE);
+                
+                newPopulation.push(child);
+            }
+            
+            // Replace old population
+            creatures = newPopulation;
+            generation++;
+            frameCount = 0;
+            stats.tags = 0;
+            
+            console.log(`Generation ${generation} - Best Fitness: ${stats.bestFitness.toFixed(2)}`);
+        }
+
+        // Tournament selection - pick the best from a random group
+        function tournamentSelection() {
+            let tournamentSize = 5;
+            let tournament = [];
+            
+            for (let i = 0; i < tournamentSize; i++) {
+                tournament.push(creatures[Math.floor(Math.random() * creatures.length)]);
+            }
+            
+            tournament.sort((a, b) => b.fitness - a.fitness);
+            return tournament[0];
+        }
+
+        // Crossover - combine two neural networks
+        function crossover(brain1, brain2) {
+            let child = new NeuralNetwork();
+            
+            // Randomly choose weights from either parent
+            for (let i = 0; i < brain1.inputToHidden.length; i++) {
+                for (let j = 0; j < brain1.inputToHidden[i].length; j++) {
+                    child.inputToHidden[i][j] = Math.random() < 0.5 ? 
+                        brain1.inputToHidden[i][j] : brain2.inputToHidden[i][j];
+                }
+            }
+            
+            for (let i = 0; i < brain1.hiddenToOutput.length; i++) {
+                for (let j = 0; j < brain1.hiddenToOutput[i].length; j++) {
+                    child.hiddenToOutput[i][j] = Math.random() < 0.5 ? 
+                        brain1.hiddenToOutput[i][j] : brain2.hiddenToOutput[i][j];
+                }
+            }
+            
+            for (let i = 0; i < brain1.hiddenBias.length; i++) {
+                child.hiddenBias[i] = Math.random() < 0.5 ? 
+                    brain1.hiddenBias[i] : brain2.hiddenBias[i];
+            }
+            
+            for (let i = 0; i < brain1.outputBias.length; i++) {
+                child.outputBias[i] = Math.random() < 0.5 ? 
+                    brain1.outputBias[i] : brain2.outputBias[i];
+            }
+            
+            return child;
+        }
+
+        // ===== SIMULATION FUNCTIONS =====
+
+        // Initialize the simulation
+        function init() {
+            // Set up canvas
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            canvas.width = CONFIG.CANVAS_WIDTH;
+            canvas.height = CONFIG.CANVAS_HEIGHT;
+            
+            // Create initial population
+            createInitialPopulation();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Start the main game loop
+            gameLoop();
+        }
+
+        // Create the initial population of creatures
+        function createInitialPopulation() {
+            creatures = [];
+            
+            for (let i = 0; i < CONFIG.POPULATION_SIZE; i++) {
+                let type;
+                
+                // Assign creature types based on game mode
+                switch(gameMode) {
+                    case 'tag':
+                        type = i < CONFIG.POPULATION_SIZE / 2 ? 'HUNTER' : 'PREY';
+                        break;
+                    case 'hideSeek':
+                        type = i < CONFIG.POPULATION_SIZE * 0.2 ? 'HUNTER' : 'PREY';
+                        break;
+                    case 'mixed':
+                        if (i < CONFIG.POPULATION_SIZE * 0.3) type = 'HUNTER';
+                        else if (i < CONFIG.POPULATION_SIZE * 0.6) type = 'PREY';
+                        else type = 'NEUTRAL';
+                        break;
+                }
+                
+                let creature = new Creature(undefined, undefined, type);
+                creatures.push(creature);
+            }
+        }
+
+        // Main game loop
+        function gameLoop() {
+            if (!isPaused) {
+                update();
+                draw();
+                
+                frameCount++;
+                
+                // Check if it's time to evolve
+                if (frameCount >= CONFIG.GENERATION_LENGTH) {
+                    evolvePopulation();
+                }
+            }
+            
+            // Continue the loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Update all creatures
+        function update() {
+            creatures.forEach(creature => {
+                creature.think();
+                creature.checkForTags();
+                creature.calculateFitness();
+            });
+            
+            // Update UI
+            updateDisplay();
+        }
+
+        // Draw everything
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid (optional)
+            drawGrid();
+            
+            // Draw all creatures
+            creatures.forEach(creature => creature.draw());
+        }
+
+        // Draw grid lines (helpful for visualization)
+        function drawGrid() {
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 0.5;
+            
+            // Vertical lines
+            for (let x = 0; x < canvas.width; x += CONFIG.GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            // Horizontal lines
+            for (let y = 0; y < canvas.height; y += CONFIG.GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        // Update statistics
+        function updateStats() {
+            if (creatures.length > 0) {
+                stats.bestFitness = Math.max(...creatures.map(c => c.fitness));
+                stats.avgFitness = creatures.reduce((sum, c) => sum + c.fitness, 0) / creatures.length;
+            }
+        }
+
+        // Update the display elements
+        function updateDisplay() {
+            document.getElementById('generation').textContent = generation;
+            document.getElementById('bestFitness').textContent = stats.bestFitness.toFixed(2);
+            document.getElementById('avgFitness').textContent = stats.avgFitness.toFixed(2);
+            document.getElementById('tagCount').textContent = stats.tags;
+        }
+
+        // ===== EVENT LISTENERS =====
+        function setupEventListeners() {
+            // Population size control
+            document.getElementById('populationSize').addEventListener('input', function(e) {
+                CONFIG.POPULATION_SIZE = parseInt(e.target.value);
+                document.getElementById('popDisplay').textContent = e.target.value;
+            });
+
+            // Simulation speed control
+            document.getElementById('simSpeed').addEventListener('input', function(e) {
+                CONFIG.GENERATION_LENGTH = Math.floor(2000 / parseFloat(e.target.value));
+                document.getElementById('speedDisplay').textContent = e.target.value + 'x';
+            });
+
+            // Mutation rate control
+            document.getElementById('mutationRate').addEventListener('input', function(e) {
+                CONFIG.MUTATION_RATE = parseFloat(e.target.value);
+                document.getElementById('mutationDisplay').textContent = e.target.value;
+            });
+
+            // Grid size control
+            document.getElementById('gridSize').addEventListener('input', function(e) {
+                CONFIG.GRID_SIZE = parseInt(e.target.value);
+                document.getElementById('gridDisplay').textContent = e.target.value;
+            });
+
+            // Game mode selection
+            document.getElementById('gameMode').addEventListener('change', function(e) {
+                gameMode = e.target.value;
+                createInitialPopulation(); // Restart with new mode
+                generation = 1;
+                frameCount = 0;
+            });
+
+            // Control buttons
+            document.getElementById('pauseBtn').addEventListener('click', function() {
+                isPaused = !isPaused;
+                this.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+            });
+
+            document.getElementById('resetBtn').addEventListener('click', function() {
+                createInitialPopulation();
+                generation = 1;
+                frameCount = 0;
+                stats.tags = 0;
+            });
+
+            document.getElementById('evolveBtn').addEventListener('click', function() {
+                evolvePopulation();
+            });
+
+            // Resize canvas when window resizes
+            window.addEventListener('resize', function() {
+                CONFIG.CANVAS_WIDTH = window.innerWidth;
+                CONFIG.CANVAS_HEIGHT = window.innerHeight;
+                canvas.width = CONFIG.CANVAS_WIDTH;
+                canvas.height = CONFIG.CANVAS_HEIGHT;
+            });
+        }
+
+        // ===== START THE SIMULATION =====
+        // Wait for the page to load, then initialize
+        window.addEventListener('load', init);
+
+        /* ===============================
+         * HOW TO CUSTOMIZE THIS SIMULATION:
+         * 
+         * 1. Modify CONFIG object at the top to change basic parameters
+         * 2. Adjust creature types and behaviors in the Creature class
+         * 3. Change fitness functions in calculateFitness() method
+         * 4. Modify neural network structure in NeuralNetwork class
+         * 5. Add new input types in getInputs() method
+         * 6. Create new game modes by modifying the gameMode switch statements
+         * 7. Adjust evolution parameters in the genetic algorithm functions
+         * 
+         * EXPERIMENT IDEAS:
+         * - Add obstacles/walls to the environment
+         * - Create different creature species with unique abilities
+         * - Add energy/food mechanics
+         * - Implement more complex neural network architectures
+         * - Add visual indicators for creature "thoughts"
+         * - Create territorial behaviors
+         * - Add reproduction mechanics beyond simple evolution
+         * =============================== */
+    </script>
 </body>
 </html>
