@@ -5,361 +5,617 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Continuous Evolution NEAT Simulation</title>
     <style>
+        /* Basic styling to make the canvas full-screen with dark theme */
         body {
-            margin: 0;
-            padding: 0;
-            background: #1a1a1a;
+            margin: 0;              /* Remove default browser margins */
+            padding: 0;             /* Remove default browser padding */
+            background: #1a1a1a;    /* Dark background color */
             font-family: Arial, sans-serif;
-            overflow: hidden;
+            overflow: hidden;       /* Hide scrollbars for full-screen effect */
         }
         canvas {
-            display: block;
-            background: #1a1a1a;
+            display: block;         /* Remove inline spacing below canvas */
+            background: #1a1a1a;    /* Match canvas background to body */
         }
     </style>
 </head>
 <body>
+    <!-- Main canvas where all simulation graphics are drawn -->
     <canvas id="gameCanvas"></canvas>
     
     <script>
-        // ===== CONFIGURATION =====
+        // ===== CONFIGURATION SECTION =====
+        // This object contains all the tunable parameters for the simulation.
+        // Modify these values to experiment with different behaviors!
         const CONFIG = {
-            // Visual settings
-            CANVAS_WIDTH: window.innerWidth,
-            CANVAS_HEIGHT: window.innerHeight,
-            GRID_SIZE: 30,
+            // ===== VISUAL & WORLD SETTINGS =====
+            // These control how the simulation looks and the game world size
+            CANVAS_WIDTH: window.innerWidth,   // Canvas width = browser window width
+            CANVAS_HEIGHT: window.innerHeight, // Canvas height = browser window height
+            GRID_SIZE: 30,                     // Size of each grid cell in pixels (creatures move cell by cell)
             
-            // Neural network parameters
-            INPUT_NODES: 8,             // 8-direction vision
-            OUTPUT_NODES: 4,            // UP, DOWN, LEFT, RIGHT
-            MIN_HIDDEN_NODES: 3,
-            MAX_HIDDEN_NODES: 10,
+            // ===== NEURAL NETWORK ARCHITECTURE =====
+            // These define the "brain" structure of each creature
+            INPUT_NODES: 8,                    // How many "sensors" each creature has (8-direction vision)
+            OUTPUT_NODES: 4,                   // How many actions available (UP, DOWN, LEFT, RIGHT)
             
-            // Population settings
-            MAX_HUNTERS: 15,
-            MAX_PREY: 15,
-            RESPAWN_DELAY: 60,          // Frames before respawn
+            // ===== DEEP NETWORK PARAMETERS =====
+            // Support for multiple hidden layers (Deep NEAT)
+            MIN_HIDDEN_LAYERS: 1,              // Minimum number of hidden layers
+            MAX_HIDDEN_LAYERS: 4,              // Maximum number of hidden layers (more = deeper thinking)
+            MIN_NODES_PER_LAYER: 2,            // Minimum nodes in any hidden layer
+            MAX_NODES_PER_LAYER: 8,            // Maximum nodes in any hidden layer
             
-            // Energy system
-            STARTING_ENERGY: 80,
-            MAX_ENERGY: 120,
-            ENERGY_DECAY: 0.15,
-            ENERGY_MOVE_COST: 0.3,
-            ENERGY_DEATH_THRESHOLD: 0.1,
+            // ===== TOPOLOGY EVOLUTION RATES =====
+            LAYER_ADD_RATE: 0.03,              // Chance to add a new hidden layer (3%)
+            LAYER_REMOVE_RATE: 0.02,           // Chance to remove a hidden layer (2%)
+            NODE_ADD_RATE: 0.08,               // Chance to add a node to existing layer (8%)
+            NODE_REMOVE_RATE: 0.05,            // Chance to remove a node from layer (5%)
             
-            // Combat system
-            TAG_DISTANCE: 1,
-            MAX_TAGS_BEFORE_OUT: 2,
-            ENERGY_GAIN_TAG: 15,
-            ENERGY_GAIN_SURVIVAL: 0.1,
+            // ===== POPULATION MANAGEMENT =====
+            // Controls how many creatures exist and their lifecycle
+            MAX_HUNTERS: 15,                   // Maximum number of red hunter creatures
+            MAX_PREY: 15,                      // Maximum number of blue prey creatures
+            RESPAWN_DELAY: 60,                 // How many frames to wait before respawning (1 second at 60fps)
             
-            // Evolution parameters
-            MUTATION_RATE: 0.3,
-            NODE_ADD_RATE: 0.06,
-            NODE_REMOVE_RATE: 0.03,
-            ELITE_THRESHOLD: 0.7,       // Top 70% for breeding
-            ABILITY_MUTATION_RATE: 0.08,
-            MAX_SPECIAL_ABILITIES: 2,
+            // ===== ENERGY SYSTEM =====
+            // Energy is like "health" - creatures die when it reaches zero
+            STARTING_ENERGY: 80,               // Energy creatures start with
+            MAX_ENERGY: 120,                   // Energy cap (can't go higher)
+            ENERGY_DECAY: 0.15,                // Energy lost every frame just for existing
+            ENERGY_MOVE_COST: 0.3,             // Extra energy cost for moving
+            ENERGY_DEATH_THRESHOLD: 0.1,      // Creature dies when energy drops below this
             
-            // Environment
-            WALL_DENSITY: 0.03,
-            WALL_KILL_ENERGY: 30,
-            VISION_RANGE: 3,
+            // ===== COMBAT & INTERACTION SYSTEM =====
+            // Rules for how hunters and prey interact
+            TAG_DISTANCE: 1,                   // How close hunter must be to tag prey (grid cells)
+            MAX_TAGS_BEFORE_OUT: 2,            // Prey dies after being tagged this many times
+            ENERGY_GAIN_TAG: 15,               // Energy hunter gains when successfully tagging prey
+            ENERGY_GAIN_SURVIVAL: 0.1,        // Small energy bonus prey gets each frame for surviving
             
-            // Speed control
-            MIN_SIMULATION_SPEED: 0.1,
-            MAX_SIMULATION_SPEED: 10.0,
-            DEFAULT_SIMULATION_SPEED: 1.0,
+            // ===== EVOLUTION & GENETICS PARAMETERS =====
+            // These control how creatures evolve and improve over time
+            MUTATION_RATE: 0.25,               // Chance each neural network weight will mutate (25%)
+            ELITE_THRESHOLD: 0.7,              // Top 70% of performers can become parents
+            ABILITY_MUTATION_RATE: 0.08,       // Chance to gain a special ability (8%)
+            MAX_SPECIAL_ABILITIES: 2,          // Maximum special abilities per creature
             
-            // Fitness rewards
-            HUNTER_TAG_REWARD: 100,
-            HUNTER_SURVIVAL_REWARD: 0.5,
-            PREY_SURVIVAL_REWARD: 1.0,
-            PREY_EVASION_REWARD: 50,
+            // ===== ENVIRONMENT SETTINGS =====
+            // Physical world properties and obstacles
+            WALL_DENSITY: 0.03,                // Percentage of world covered in walls (3%)
+            WALL_KILL_ENERGY: 30,              // Energy lost when running into a wall
+            VISION_RANGE: 3,                   // How far creatures can "see" (grid cells)
             
-            // Colors
+            // ===== SIMULATION SPEED CONTROLS =====
+            // Allow user to speed up or slow down the simulation
+            MIN_SIMULATION_SPEED: 0.1,         // Slowest speed (10% normal speed)
+            MAX_SIMULATION_SPEED: 10.0,        // Fastest speed (10x normal speed)
+            DEFAULT_SIMULATION_SPEED: 1.0,     // Normal speed (100%)
+            
+            // ===== FITNESS & REWARD SYSTEM =====
+            // How creatures are scored for evolutionary selection
+            HUNTER_TAG_REWARD: 100,            // Points hunters get for each successful tag
+            HUNTER_SURVIVAL_REWARD: 0.5,       // Points hunters get per frame alive
+            PREY_SURVIVAL_REWARD: 1.0,         // Points prey get per frame alive (higher because harder)
+            PREY_EVASION_REWARD: 50,           // Points prey get for successfully evading
+            
+            // ===== COLOR SCHEME =====
+            // Visual appearance of different elements
             COLORS: {
-                HUNTER: '#ff4444',
-                PREY: '#4444ff',
-                WALL: '#9966cc'
+                HUNTER: '#ff4444',              // Red for aggressive hunters
+                PREY: '#4444ff',                // Blue for defensive prey  
+                WALL: '#9966cc'                 // Purple for dangerous walls
             }
         };
 
-        // ===== GLOBAL VARIABLES =====
-        let canvas, ctx;
-        let creatures = [];
-        let walls = [];
-        let frameCount = 0;
-        let isPaused = false;
-        let simulationSpeed = CONFIG.DEFAULT_SIMULATION_SPEED;
+        // ===== GLOBAL VARIABLES SECTION =====
+        // These variables store the current state of the entire simulation
         
-        // Continuous evolution tracking
-        let respawnQueue = [];
-        let fitnessHistory = { hunters: [], prey: [] };
-        let totalCreaturesSpawned = 0;
+        let canvas, ctx;                       // Canvas element and drawing context for graphics
+        let creatures = [];                    // Array storing all creatures (hunters and prey)
+        let walls = [];                        // Array storing all wall obstacles
+        let frameCount = 0;                    // Counter for simulation frames (used for timing)
+        let isPaused = false;                  // Boolean to pause/unpause the simulation
+        let simulationSpeed = CONFIG.DEFAULT_SIMULATION_SPEED; // Current speed multiplier
         
+        // ===== CONTINUOUS EVOLUTION TRACKING =====
+        // Unlike traditional genetic algorithms that evolve in generations,
+        // this system evolves creatures individually as they die and respawn
+        let respawnQueue = [];                 // Queue of creatures waiting to respawn
+        let fitnessHistory = { hunters: [], prey: [] }; // Record of past performance for breeding
+        let totalCreaturesSpawned = 0;         // Running count for unique IDs
+        
+        // ===== STATISTICS TRACKING =====
+        // Real-time statistics displayed on screen
         let stats = {
-            huntersAlive: 0,
-            preyAlive: 0,
-            totalTags: 0,
-            totalRespawns: 0,
-            avgHunterFitness: 0,
-            avgPreyFitness: 0,
-            bestHunterFitness: 0,
-            bestPreyFitness: 0
+            huntersAlive: 0,                   // Current number of living hunters
+            preyAlive: 0,                      // Current number of living prey
+            totalTags: 0,                      // Total successful tags since start
+            totalRespawns: 0,                  // Total creatures that have respawned
+            avgHunterFitness: 0,               // Average fitness score of current hunters
+            avgPreyFitness: 0,                 // Average fitness score of current prey
+            bestHunterFitness: 0,              // Highest fitness score among current hunters
+            bestPreyFitness: 0                 // Highest fitness score among current prey
         };
 
-        // ===== NEURAL NETWORK CLASS =====
+        // ===== DEEP NEURAL NETWORK CLASS =====
+        // This is the "brain" of each creature. It's an enhanced version of NEAT
+        // (NeuroEvolution of Augmenting Topologies) that supports MULTIPLE HIDDEN LAYERS
+        // 
+        // HOW IT WORKS:
+        // - Takes 8 inputs (vision in 8 directions)
+        // - Processes through 1-4 hidden layers with 2-8 nodes each
+        // - Each layer can have different number of nodes
+        // - Outputs 4 values (movement directions)
+        // - Can mutate weights, add/remove nodes, and add/remove entire layers
         class NeuralNetwork {
-            constructor(hiddenNodeCount = null) {
-                this.hiddenNodeCount = hiddenNodeCount || 
-                    (CONFIG.MIN_HIDDEN_NODES + Math.floor(Math.random() * (CONFIG.MAX_HIDDEN_NODES - CONFIG.MIN_HIDDEN_NODES + 1)));
+            constructor(layerStructure = null) {
+                // Initialize layer structure
+                if (layerStructure) {
+                    // Copy existing structure
+                    this.hiddenLayers = [...layerStructure];
+                } else {
+                    // Create random structure
+                    let numLayers = CONFIG.MIN_HIDDEN_LAYERS + 
+                        Math.floor(Math.random() * (CONFIG.MAX_HIDDEN_LAYERS - CONFIG.MIN_HIDDEN_LAYERS + 1));
+                    
+                    this.hiddenLayers = [];
+                    for (let i = 0; i < numLayers; i++) {
+                        let nodesInLayer = CONFIG.MIN_NODES_PER_LAYER + 
+                            Math.floor(Math.random() * (CONFIG.MAX_NODES_PER_LAYER - CONFIG.MIN_NODES_PER_LAYER + 1));
+                        this.hiddenLayers.push(nodesInLayer);
+                    }
+                }
                 
-                // Initialize matrices
-                this.inputToHidden = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenNodeCount);
-                this.hiddenToOutput = this.createMatrix(this.hiddenNodeCount, CONFIG.OUTPUT_NODES);
-                this.hiddenBias = this.createArray(this.hiddenNodeCount);
-                this.outputBias = this.createArray(CONFIG.OUTPUT_NODES);
+                // Initialize weight matrices for each layer connection
+                this.weights = [];          // Array of weight matrices between layers
+                this.biases = [];           // Array of bias vectors for each layer
                 
-                this.randomize();
+                this.initializeWeights();
                 this.complexity = this.calculateComplexity();
             }
 
+            // Initialize all weight matrices and bias vectors
+            initializeWeights() {
+                this.weights = [];
+                this.biases = [];
+                
+                // Input to first hidden layer
+                let inputSize = CONFIG.INPUT_NODES;
+                let outputSize = this.hiddenLayers[0];
+                this.weights.push(this.createMatrix(inputSize, outputSize));
+                this.biases.push(this.createArray(outputSize));
+                
+                // Hidden layer to hidden layer connections
+                for (let i = 0; i < this.hiddenLayers.length - 1; i++) {
+                    inputSize = this.hiddenLayers[i];
+                    outputSize = this.hiddenLayers[i + 1];
+                    this.weights.push(this.createMatrix(inputSize, outputSize));
+                    this.biases.push(this.createArray(outputSize));
+                }
+                
+                // Last hidden layer to output
+                inputSize = this.hiddenLayers[this.hiddenLayers.length - 1];
+                outputSize = CONFIG.OUTPUT_NODES;
+                this.weights.push(this.createMatrix(inputSize, outputSize));
+                this.biases.push(this.createArray(outputSize));
+                
+                // Randomize all weights and biases
+                this.randomizeWeights();
+            }
+
+            // Helper function: Create a 2D array (matrix) filled with zeros
             createMatrix(rows, cols) {
                 return Array(rows).fill().map(() => Array(cols).fill(0));
             }
 
+            // Helper function: Create a 1D array filled with zeros
             createArray(size) {
                 return Array(size).fill(0);
             }
 
-            randomize() {
-                // Random weights between -1 and 1
-                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
-                    for (let j = 0; j < this.hiddenNodeCount; j++) {
-                        this.inputToHidden[i][j] = (Math.random() * 2) - 1;
+            // Initialize all weights and biases with random values between -1 and 1
+            randomizeWeights() {
+                for (let layerIndex = 0; layerIndex < this.weights.length; layerIndex++) {
+                    let weightMatrix = this.weights[layerIndex];
+                    let biasVector = this.biases[layerIndex];
+                    
+                    // Randomize weights
+                    for (let i = 0; i < weightMatrix.length; i++) {
+                        for (let j = 0; j < weightMatrix[i].length; j++) {
+                            weightMatrix[i][j] = (Math.random() * 2) - 1;
+                        }
                     }
-                }
-                
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
-                        this.hiddenToOutput[i][j] = (Math.random() * 2) - 1;
+                    
+                    // Randomize biases
+                    for (let i = 0; i < biasVector.length; i++) {
+                        biasVector[i] = (Math.random() * 2) - 1;
                     }
-                }
-                
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    this.hiddenBias[i] = (Math.random() * 2) - 1;
-                }
-                
-                for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
-                    this.outputBias[i] = (Math.random() * 2) - 1;
                 }
             }
 
+            // DEEP FEEDFORWARD FUNCTION - Process through multiple layers
+            // Takes sensor inputs and produces movement decisions through deep processing
             feedForward(inputs) {
-                // Calculate hidden layer
-                let hidden = Array(this.hiddenNodeCount).fill(0);
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    for (let j = 0; j < CONFIG.INPUT_NODES; j++) {
-                        hidden[i] += inputs[j] * this.inputToHidden[j][i];
+                let currentValues = [...inputs]; // Start with input values
+                
+                // Process through each layer
+                for (let layerIndex = 0; layerIndex < this.weights.length; layerIndex++) {
+                    let weightMatrix = this.weights[layerIndex];
+                    let biasVector = this.biases[layerIndex];
+                    let nextValues = Array(weightMatrix[0].length).fill(0);
+                    
+                    // Calculate values for next layer
+                    for (let j = 0; j < nextValues.length; j++) {
+                        for (let i = 0; i < currentValues.length; i++) {
+                            nextValues[j] += currentValues[i] * weightMatrix[i][j];
+                        }
+                        nextValues[j] += biasVector[j];               // Add bias
+                        nextValues[j] = this.activate(nextValues[j]); // Apply activation
                     }
-                    hidden[i] += this.hiddenBias[i];
-                    hidden[i] = this.activate(hidden[i]);
+                    
+                    currentValues = nextValues; // Move to next layer
                 }
                 
-                // Calculate output layer
-                let outputs = Array(CONFIG.OUTPUT_NODES).fill(0);
-                for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
-                    for (let j = 0; j < this.hiddenNodeCount; j++) {
-                        outputs[i] += hidden[j] * this.hiddenToOutput[j][i];
-                    }
-                    outputs[i] += this.outputBias[i];
-                    outputs[i] = this.activate(outputs[i]);
-                }
-                
-                return outputs;
+                return currentValues; // Final output layer
             }
 
+            // ACTIVATION FUNCTION - Sigmoid function
             activate(x) {
-                return 1 / (1 + Math.exp(-x)); // Sigmoid activation
+                return 1 / (1 + Math.exp(-x));
             }
 
+            // Calculate total complexity (number of connections and nodes)
             calculateComplexity() {
-                return (CONFIG.INPUT_NODES * this.hiddenNodeCount) + 
-                       (this.hiddenNodeCount * CONFIG.OUTPUT_NODES) + 
-                       this.hiddenNodeCount + CONFIG.OUTPUT_NODES;
+                let totalConnections = 0;
+                let totalNodes = 0;
+                
+                // Count connections
+                for (let weightMatrix of this.weights) {
+                    totalConnections += weightMatrix.length * weightMatrix[0].length;
+                }
+                
+                // Count nodes (hidden + output)
+                for (let layerSize of this.hiddenLayers) {
+                    totalNodes += layerSize;
+                }
+                totalNodes += CONFIG.OUTPUT_NODES;
+                
+                return totalConnections + totalNodes;
             }
 
+            // DEEP COPY FUNCTION - Create exact duplicate of this deep network
             copy() {
-                let newNetwork = new NeuralNetwork(this.hiddenNodeCount);
+                let newNetwork = new NeuralNetwork(this.hiddenLayers);
                 
-                // Copy all weights and biases
-                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
-                    for (let j = 0; j < this.hiddenNodeCount; j++) {
-                        newNetwork.inputToHidden[i][j] = this.inputToHidden[i][j];
+                // Copy all weights
+                for (let layerIndex = 0; layerIndex < this.weights.length; layerIndex++) {
+                    let originalWeights = this.weights[layerIndex];
+                    let newWeights = newNetwork.weights[layerIndex];
+                    
+                    for (let i = 0; i < originalWeights.length; i++) {
+                        for (let j = 0; j < originalWeights[i].length; j++) {
+                            newWeights[i][j] = originalWeights[i][j];
+                        }
                     }
                 }
                 
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
-                        newNetwork.hiddenToOutput[i][j] = this.hiddenToOutput[i][j];
+                // Copy all biases
+                for (let layerIndex = 0; layerIndex < this.biases.length; layerIndex++) {
+                    let originalBiases = this.biases[layerIndex];
+                    let newBiases = newNetwork.biases[layerIndex];
+                    
+                    for (let i = 0; i < originalBiases.length; i++) {
+                        newBiases[i] = originalBiases[i];
                     }
-                }
-                
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    newNetwork.hiddenBias[i] = this.hiddenBias[i];
-                }
-                
-                for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
-                    newNetwork.outputBias[i] = this.outputBias[i];
                 }
                 
                 newNetwork.complexity = this.complexity;
                 return newNetwork;
             }
 
+            // DEEP MUTATION FUNCTION - Mutate all weights and biases across all layers
             mutate(rate) {
-                // Mutate all weights and biases
-                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
-                    for (let j = 0; j < this.hiddenNodeCount; j++) {
-                        if (Math.random() < rate) {
-                            this.inputToHidden[i][j] += (Math.random() * 0.4) - 0.2;
-                            this.inputToHidden[i][j] = Math.max(-1, Math.min(1, this.inputToHidden[i][j]));
+                for (let layerIndex = 0; layerIndex < this.weights.length; layerIndex++) {
+                    let weightMatrix = this.weights[layerIndex];
+                    let biasVector = this.biases[layerIndex];
+                    
+                    // Mutate weights
+                    for (let i = 0; i < weightMatrix.length; i++) {
+                        for (let j = 0; j < weightMatrix[i].length; j++) {
+                            if (Math.random() < rate) {
+                                weightMatrix[i][j] += (Math.random() * 0.4) - 0.2;
+                                weightMatrix[i][j] = Math.max(-1, Math.min(1, weightMatrix[i][j]));
+                            }
                         }
                     }
-                }
-                
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
+                    
+                    // Mutate biases
+                    for (let i = 0; i < biasVector.length; i++) {
                         if (Math.random() < rate) {
-                            this.hiddenToOutput[i][j] += (Math.random() * 0.4) - 0.2;
-                            this.hiddenToOutput[i][j] = Math.max(-1, Math.min(1, this.hiddenToOutput[i][j]));
+                            biasVector[i] += (Math.random() * 0.4) - 0.2;
+                            biasVector[i] = Math.max(-1, Math.min(1, biasVector[i]));
                         }
-                    }
-                }
-                
-                for (let i = 0; i < this.hiddenNodeCount; i++) {
-                    if (Math.random() < rate) {
-                        this.hiddenBias[i] += (Math.random() * 0.4) - 0.2;
-                        this.hiddenBias[i] = Math.max(-1, Math.min(1, this.hiddenBias[i]));
-                    }
-                }
-                
-                for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
-                    if (Math.random() < rate) {
-                        this.outputBias[i] += (Math.random() * 0.4) - 0.2;
-                        this.outputBias[i] = Math.max(-1, Math.min(1, this.outputBias[i]));
                     }
                 }
             }
 
+            // DEEP TOPOLOGY MUTATION - Change the structure of the deep network
             mutateTopology() {
-                // Add node
-                if (Math.random() < CONFIG.NODE_ADD_RATE && this.hiddenNodeCount < CONFIG.MAX_HIDDEN_NODES) {
-                    this.addHiddenNode();
+                // Chance to add a new layer
+                if (Math.random() < CONFIG.LAYER_ADD_RATE && 
+                    this.hiddenLayers.length < CONFIG.MAX_HIDDEN_LAYERS) {
+                    this.addHiddenLayer();
                 }
                 
-                // Remove node
-                if (Math.random() < CONFIG.NODE_REMOVE_RATE && this.hiddenNodeCount > CONFIG.MIN_HIDDEN_NODES) {
-                    this.removeHiddenNode();
+                // Chance to remove a layer
+                if (Math.random() < CONFIG.LAYER_REMOVE_RATE && 
+                    this.hiddenLayers.length > CONFIG.MIN_HIDDEN_LAYERS) {
+                    this.removeHiddenLayer();
+                }
+                
+                // Chance to add nodes to existing layers
+                if (Math.random() < CONFIG.NODE_ADD_RATE) {
+                    this.addNodeToRandomLayer();
+                }
+                
+                // Chance to remove nodes from existing layers
+                if (Math.random() < CONFIG.NODE_REMOVE_RATE) {
+                    this.removeNodeFromRandomLayer();
                 }
             }
 
-            addHiddenNode() {
-                let oldHiddenCount = this.hiddenNodeCount;
-                this.hiddenNodeCount++;
+            // ADD HIDDEN LAYER - Add a new layer between existing layers
+            addHiddenLayer() {
+                // Choose where to insert new layer (random position between existing layers)
+                let insertPosition = Math.floor(Math.random() * (this.hiddenLayers.length + 1));
                 
-                // Expand matrices
-                let newInputToHidden = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenNodeCount);
-                let newHiddenToOutput = this.createMatrix(this.hiddenNodeCount, CONFIG.OUTPUT_NODES);
-                let newHiddenBias = this.createArray(this.hiddenNodeCount);
+                // Determine size of new layer
+                let newLayerSize = CONFIG.MIN_NODES_PER_LAYER + 
+                    Math.floor(Math.random() * (CONFIG.MAX_NODES_PER_LAYER - CONFIG.MIN_NODES_PER_LAYER + 1));
                 
-                // Copy old weights
-                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
-                    for (let j = 0; j < oldHiddenCount; j++) {
-                        newInputToHidden[i][j] = this.inputToHidden[i][j];
+                // Insert new layer structure
+                this.hiddenLayers.splice(insertPosition, 0, newLayerSize);
+                
+                // Create new weight matrices and bias vectors
+                let newWeights = [];
+                let newBiases = [];
+                
+                // If inserting at beginning
+                if (insertPosition === 0) {
+                    // New input->first layer connection
+                    newWeights.push(this.createMatrix(CONFIG.INPUT_NODES, newLayerSize));
+                    newBiases.push(this.createArray(newLayerSize));
+                    
+                    // New first layer->existing first layer connection
+                    if (this.hiddenLayers.length > 1) {
+                        newWeights.push(this.createMatrix(newLayerSize, this.hiddenLayers[1]));
+                        newBiases.push(this.createArray(this.hiddenLayers[1]));
+                    } else {
+                        // New first layer->output connection
+                        newWeights.push(this.createMatrix(newLayerSize, CONFIG.OUTPUT_NODES));
+                        newBiases.push(this.createArray(CONFIG.OUTPUT_NODES));
                     }
-                    newInputToHidden[i][oldHiddenCount] = (Math.random() * 2) - 1; // New node
+                    
+                    // Combine new weights with existing (skip old input->first connection)
+                    this.weights = [...newWeights, ...this.weights.slice(1)];
+                    this.biases = [...newBiases, ...this.biases.slice(1)];
+                    
+                } else if (insertPosition === this.hiddenLayers.length - 1) {
+                    // Inserting at end
+                    let prevLayerSize = this.hiddenLayers[insertPosition - 1];
+                    
+                    // Previous layer->new layer connection
+                    newWeights.push(this.createMatrix(prevLayerSize, newLayerSize));
+                    newBiases.push(this.createArray(newLayerSize));
+                    
+                    // New layer->output connection
+                    newWeights.push(this.createMatrix(newLayerSize, CONFIG.OUTPUT_NODES));
+                    newBiases.push(this.createArray(CONFIG.OUTPUT_NODES));
+                    
+                    // Combine existing weights with new (replace last output connection)
+                    this.weights = [...this.weights.slice(0, -1), ...newWeights];
+                    this.biases = [...this.biases.slice(0, -1), ...newBiases];
+                    
+                } else {
+                    // Inserting in middle
+                    let prevLayerSize = this.hiddenLayers[insertPosition - 1];
+                    let nextLayerSize = this.hiddenLayers[insertPosition + 1];
+                    
+                    // Previous layer->new layer connection
+                    newWeights.push(this.createMatrix(prevLayerSize, newLayerSize));
+                    newBiases.push(this.createArray(newLayerSize));
+                    
+                    // New layer->next layer connection
+                    newWeights.push(this.createMatrix(newLayerSize, nextLayerSize));
+                    newBiases.push(this.createArray(nextLayerSize));
+                    
+                    // Insert new weights at correct position
+                    this.weights.splice(insertPosition, 1, ...newWeights);
+                    this.biases.splice(insertPosition, 1, ...newBiases);
                 }
                 
-                for (let i = 0; i < oldHiddenCount; i++) {
-                    for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
-                        newHiddenToOutput[i][j] = this.hiddenToOutput[i][j];
-                    }
-                }
-                
-                for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
-                    newHiddenToOutput[oldHiddenCount][j] = (Math.random() * 2) - 1; // New node
-                }
-                
-                for (let i = 0; i < oldHiddenCount; i++) {
-                    newHiddenBias[i] = this.hiddenBias[i];
-                }
-                newHiddenBias[oldHiddenCount] = (Math.random() * 2) - 1; // New node
-                
-                this.inputToHidden = newInputToHidden;
-                this.hiddenToOutput = newHiddenToOutput;
-                this.hiddenBias = newHiddenBias;
+                // Randomize new connections
+                this.randomizeNewConnections(insertPosition);
                 this.complexity = this.calculateComplexity();
             }
 
-            removeHiddenNode() {
-                if (this.hiddenNodeCount <= CONFIG.MIN_HIDDEN_NODES) return;
+            // REMOVE HIDDEN LAYER - Remove an entire layer and reconnect
+            removeHiddenLayer() {
+                if (this.hiddenLayers.length <= CONFIG.MIN_HIDDEN_LAYERS) return;
                 
-                let oldHiddenCount = this.hiddenNodeCount;
-                this.hiddenNodeCount--;
+                // Choose random layer to remove
+                let removeIndex = Math.floor(Math.random() * this.hiddenLayers.length);
                 
-                let nodeToRemove = Math.floor(Math.random() * oldHiddenCount);
+                // Remove layer from structure
+                this.hiddenLayers.splice(removeIndex, 1);
                 
-                // Create smaller matrices
-                let newInputToHidden = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenNodeCount);
-                let newHiddenToOutput = this.createMatrix(this.hiddenNodeCount, CONFIG.OUTPUT_NODES);
-                let newHiddenBias = this.createArray(this.hiddenNodeCount);
-                
-                // Copy weights, skipping removed node
-                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
-                    let newJ = 0;
-                    for (let j = 0; j < oldHiddenCount; j++) {
-                        if (j !== nodeToRemove) {
-                            newInputToHidden[i][newJ] = this.inputToHidden[i][j];
-                            newJ++;
-                        }
+                // Reconnect remaining layers
+                if (removeIndex === 0) {
+                    // Removing first layer - connect input directly to second layer
+                    this.weights.splice(0, 2); // Remove input->first and first->second
+                    this.biases.splice(0, 2);
+                    
+                    if (this.hiddenLayers.length > 0) {
+                        // Create new input->second layer connection
+                        let newWeights = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenLayers[0]);
+                        let newBiases = this.createArray(this.hiddenLayers[0]);
+                        this.weights.unshift(newWeights);
+                        this.biases.unshift(newBiases);
+                    } else {
+                        // No hidden layers left - connect directly to output
+                        let newWeights = this.createMatrix(CONFIG.INPUT_NODES, CONFIG.OUTPUT_NODES);
+                        let newBiases = this.createArray(CONFIG.OUTPUT_NODES);
+                        this.weights = [newWeights];
+                        this.biases = [newBiases];
                     }
+                    
+                } else if (removeIndex === this.hiddenLayers.length) {
+                    // Removing last layer - connect previous layer directly to output
+                    this.weights.splice(-2, 2); // Remove prev->last and last->output
+                    this.biases.splice(-2, 2);
+                    
+                    let prevLayerSize = this.hiddenLayers[this.hiddenLayers.length - 1];
+                    let newWeights = this.createMatrix(prevLayerSize, CONFIG.OUTPUT_NODES);
+                    let newBiases = this.createArray(CONFIG.OUTPUT_NODES);
+                    this.weights.push(newWeights);
+                    this.biases.push(newBiases);
+                    
+                } else {
+                    // Removing middle layer - connect previous to next
+                    let prevLayerSize = removeIndex === 0 ? CONFIG.INPUT_NODES : this.hiddenLayers[removeIndex - 1];
+                    let nextLayerSize = removeIndex === this.hiddenLayers.length ? CONFIG.OUTPUT_NODES : this.hiddenLayers[removeIndex];
+                    
+                    this.weights.splice(removeIndex, 2); // Remove prev->removed and removed->next
+                    this.biases.splice(removeIndex, 2);
+                    
+                    let newWeights = this.createMatrix(prevLayerSize, nextLayerSize);
+                    let newBiases = this.createArray(nextLayerSize);
+                    this.weights.splice(removeIndex, 0, newWeights);
+                    this.biases.splice(removeIndex, 0, newBiases);
                 }
                 
-                let newI = 0;
-                for (let i = 0; i < oldHiddenCount; i++) {
-                    if (i !== nodeToRemove) {
-                        for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
-                            newHiddenToOutput[newI][j] = this.hiddenToOutput[i][j];
-                        }
-                        newHiddenBias[newI] = this.hiddenBias[i];
-                        newI++;
-                    }
-                }
-                
-                this.inputToHidden = newInputToHidden;
-                this.hiddenToOutput = newHiddenToOutput;
-                this.hiddenBias = newHiddenBias;
+                // Randomize new connections
+                this.randomizeNewConnections(removeIndex);
                 this.complexity = this.calculateComplexity();
+            }
+
+            // ADD NODE TO RANDOM LAYER - Increase width of existing layer
+            addNodeToRandomLayer() {
+                if (this.hiddenLayers.length === 0) return;
+                
+                // Choose random layer to expand
+                let layerIndex = Math.floor(Math.random() * this.hiddenLayers.length);
+                
+                if (this.hiddenLayers[layerIndex] >= CONFIG.MAX_NODES_PER_LAYER) return;
+                
+                // Increase layer size
+                this.hiddenLayers[layerIndex]++;
+                
+                // Update weight matrices and bias vectors
+                this.expandLayer(layerIndex);
+                this.complexity = this.calculateComplexity();
+            }
+
+            // REMOVE NODE FROM RANDOM LAYER - Decrease width of existing layer
+            removeNodeFromRandomLayer() {
+                if (this.hiddenLayers.length === 0) return;
+                
+                // Choose random layer to shrink
+                let layerIndex = Math.floor(Math.random() * this.hiddenLayers.length);
+                
+                if (this.hiddenLayers[layerIndex] <= CONFIG.MIN_NODES_PER_LAYER) return;
+                
+                // Decrease layer size
+                this.hiddenLayers[layerIndex]--;
+                
+                // Update weight matrices and bias vectors
+                this.shrinkLayer(layerIndex);
+                this.complexity = this.calculateComplexity();
+            }
+
+            // Helper: Expand a layer by adding one node
+            expandLayer(layerIndex) {
+                // Add incoming connections (to new node)
+                let incomingWeightMatrix = this.weights[layerIndex];
+                for (let i = 0; i < incomingWeightMatrix.length; i++) {
+                    incomingWeightMatrix[i].push((Math.random() * 2) - 1); // Add random weight
+                }
+                
+                // Add bias for new node
+                this.biases[layerIndex].push((Math.random() * 2) - 1);
+                
+                // Add outgoing connections (from new node)
+                if (layerIndex + 1 < this.weights.length) {
+                    let outgoingWeights = [];
+                    let outgoingWeightMatrix = this.weights[layerIndex + 1];
+                    for (let j = 0; j < outgoingWeightMatrix[0].length; j++) {
+                        outgoingWeights.push((Math.random() * 2) - 1);
+                    }
+                    this.weights[layerIndex + 1].push(outgoingWeights);
+                }
+            }
+
+            // Helper: Shrink a layer by removing one node
+            shrinkLayer(layerIndex) {
+                // Choose random node to remove
+                let nodeToRemove = Math.floor(Math.random() * this.hiddenLayers[layerIndex + 1]);
+                
+                // Remove incoming connections (to removed node)
+                let incomingWeightMatrix = this.weights[layerIndex];
+                for (let i = 0; i < incomingWeightMatrix.length; i++) {
+                    incomingWeightMatrix[i].splice(nodeToRemove, 1);
+                }
+                
+                // Remove bias for removed node
+                this.biases[layerIndex].splice(nodeToRemove, 1);
+                
+                // Remove outgoing connections (from removed node)
+                if (layerIndex + 1 < this.weights.length) {
+                    this.weights[layerIndex + 1].splice(nodeToRemove, 1);
+                }
+            }
+
+            // Helper: Randomize new connections after topology changes
+            randomizeNewConnections(layerIndex) {
+                // Randomize weights around the affected layer
+                for (let i = Math.max(0, layerIndex - 1); i < Math.min(this.weights.length, layerIndex + 2); i++) {
+                    let weightMatrix = this.weights[i];
+                    let biasVector = this.biases[i];
+                    
+                    for (let j = 0; j < weightMatrix.length; j++) {
+                        for (let k = 0; k < weightMatrix[j].length; k++) {
+                            weightMatrix[j][k] = (Math.random() * 2) - 1;
+                        }
+                    }
+                    
+                    for (let j = 0; j < biasVector.length; j++) {
+                        biasVector[j] = (Math.random() * 2) - 1;
+                    }
+                }
             }
         }
 
         // ===== WALL CLASS =====
+        // Represents dangerous obstacles that drain energy when touched
+        // Walls create environmental pressure and navigation challenges
         class Wall {
             constructor(x, y) {
-                this.x = x;
-                this.y = y;
+                this.x = x; // Grid X coordinate
+                this.y = y; // Grid Y coordinate
             }
 
+            // Draw the wall on the canvas with danger indicators
             draw() {
+                // Convert grid coordinates to pixel coordinates
                 let pixelX = this.x * CONFIG.GRID_SIZE;
                 let pixelY = this.y * CONFIG.GRID_SIZE;
                 
+                // Draw main wall body in purple
                 ctx.fillStyle = CONFIG.COLORS.WALL;
                 ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
                 
-                // Danger outline
+                // Draw red danger outline to warn creatures
                 ctx.strokeStyle = '#ff0000';
                 ctx.lineWidth = 2;
                 ctx.strokeRect(pixelX + 1, pixelY + 1, CONFIG.GRID_SIZE - 3, CONFIG.GRID_SIZE - 3);
@@ -367,174 +623,220 @@
         }
 
         // ===== CREATURE CLASS =====
+        // This is the main actor in the simulation - represents both hunters and prey
+        // Each creature has:
+        // - A neural network brain for decision making
+        // - Energy system for survival pressure
+        // - Special abilities for diversity
+        // - Fitness tracking for evolution
         class Creature {
             constructor(x, y, type, parentBrain = null) {
+                // ===== POSITION AND IDENTITY =====
                 this.x = x || Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE));
                 this.y = y || Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE));
-                this.type = type;
-                this.id = totalCreaturesSpawned++;
-                this.isAlive = true;
+                this.type = type;                      // 'HUNTER' or 'PREY'
+                this.id = totalCreaturesSpawned++;     // Unique identifier
+                this.isAlive = true;                   // Death status
                 
-                // Brain - inherit or create new
+                // ===== BRAIN SETUP =====
+                // Each creature gets its own neural network
                 if (parentBrain) {
+                    // INHERITANCE: Copy parent's brain and mutate it
                     this.brain = parentBrain.copy();
-                    this.brain.mutate(CONFIG.MUTATION_RATE);
-                    this.brain.mutateTopology();
+                    this.brain.mutate(CONFIG.MUTATION_RATE);        // Mutate weights
+                    this.brain.mutateTopology();                    // Maybe change structure
                 } else {
+                    // FRESH START: Create completely random brain
                     this.brain = new NeuralNetwork();
                 }
                 
-                // Stats
-                this.fitness = 0;
-                this.lifetimeFrames = 0;
-                this.totalTags = 0;
-                this.energy = CONFIG.STARTING_ENERGY;
-                this.maxEnergyReached = CONFIG.STARTING_ENERGY;
-                this.timesTagged = 0;
-                this.tagCooldown = 0;
-                this.framesSinceLastMove = 0;
-                this.totalDistance = 0;
+                // ===== PERFORMANCE TRACKING =====
+                // These stats determine how "fit" this creature is for evolution
+                this.fitness = 0;                      // Overall evolutionary score
+                this.lifetimeFrames = 0;               // How long this creature has lived
+                this.totalTags = 0;                    // Successful tags (hunters) or evasions (prey)
+                this.energy = CONFIG.STARTING_ENERGY;  // Current energy level
+                this.maxEnergyReached = CONFIG.STARTING_ENERGY; // Peak energy achieved
+                this.timesTagged = 0;                  // How many times prey has been tagged
+                this.tagCooldown = 0;                  // Prevents spam tagging
+                this.framesSinceLastMove = 0;          // Inactivity tracking
+                this.totalDistance = 0;                // Movement tracking
                 
-                // Simplified special abilities (only 6 core abilities)
+                // ===== SPECIAL ABILITIES SYSTEM =====
+                // Each creature can evolve unique abilities for survival advantage
+                // These create diversity and different strategies
                 this.specialAbilities = {
-                    // Hunter abilities
-                    packHunting: false,     // Enhanced prey detection
-                    energyVampire: false,   // Drain more energy when tagging
-                    speedBurst: false,      // Temporary speed boost
+                    // ===== HUNTER ABILITIES (offensive) =====
+                    packHunting: false,        // Enhanced prey detection in groups
+                    energyVampire: false,      // Drain more energy when tagging
+                    speedBurst: false,         // Temporary speed boost when low energy
                     
-                    // Prey abilities
-                    evasion: false,         // Chance to avoid tags
-                    energyEfficiency: false,// Use less energy
-                    camouflage: false,      // Harder to detect
+                    // ===== PREY ABILITIES (defensive) =====
+                    evasion: false,            // Chance to dodge incoming tags
+                    energyEfficiency: false,   // Use less energy when moving
+                    camouflage: false,         // Become temporarily invisible
                     
-                    // Negative traits
-                    lethargy: false,        // Move slower, use more energy
-                    anxiety: false          // Avoid others
+                    // ===== NEGATIVE TRAITS (drawbacks) =====
+                    lethargy: false,           // Move slower, use more energy
+                    anxiety: false             // Avoid other creatures (reduces cooperation)
                 };
                 
-                this.abilityUses = { speedBurst: 3 };
-                this.abilityCooldowns = { speedBurst: 0, evasion: 0, camouflage: 0 };
+                // ===== ABILITY TRACKING =====
+                this.abilityUses = { speedBurst: 3 };  // Limited use abilities
+                this.abilityCooldowns = {               // Cooldown timers
+                    speedBurst: 0, 
+                    evasion: 0, 
+                    camouflage: 0 
+                };
                 
+                // Find a safe starting position away from walls and other creatures
                 this.findSafeStartingPosition();
             }
 
+            // FIND SAFE STARTING POSITION
+            // Try to spawn creature in a location that's not occupied by walls or other creatures
+            // This prevents creatures from spawning inside obstacles
             findSafeStartingPosition() {
-                for (let attempts = 0; attempts < 100; attempts++) {
+                for (let attempts = 0; attempts < 100; attempts++) { // Try up to 100 times
                     let testX = Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE));
                     let testY = Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE));
                     
                     if (this.isPositionSafe(testX, testY)) {
                         this.x = testX;
                         this.y = testY;
-                        return;
+                        return; // Success! Exit function
                     }
                 }
+                // If we can't find a safe spot, creature spawns wherever it was placed initially
             }
 
+            // CHECK IF POSITION IS SAFE
+            // Returns true if the given coordinates are safe to move to
+            // Used for both spawning and movement validation
             isPositionSafe(x, y) {
-                // Check boundaries
+                // Check if position is within world boundaries
                 if (x < 0 || x >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
                     y < 0 || y >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
-                    return false;
+                    return false; // Outside world bounds
                 }
                 
-                // Check walls
+                // Check for collision with walls
                 for (let wall of walls) {
                     if (wall.x === x && wall.y === y) return false;
                 }
                 
-                // Check other creatures
+                // Check for collision with other creatures
                 for (let creature of creatures) {
                     if (creature !== this && creature.isAlive && 
                         creature.x === x && creature.y === y) {
-                        return false;
+                        return false; // Position occupied
                     }
                 }
                 
-                return true;
+                return true; // Position is safe!
             }
 
+            // GET INPUTS - This is the creature's "vision system"
+            // Creates the input array that gets fed into the neural network
+            // Think of this as the creature's sensors that detect the environment
             getInputs() {
                 let inputs = [];
+                // Define 8 directions for vision (like a compass)
                 const directions = [
-                    [-1, -1], [-1, 0], [-1, 1],
-                    [0, -1],           [0, 1],
-                    [1, -1],  [1, 0],  [1, 1]
+                    [-1, -1], [-1, 0], [-1, 1],  // Top-left, Top, Top-right
+                    [0, -1],           [0, 1],   // Left,         Right
+                    [1, -1],  [1, 0],  [1, 1]   // Bottom-left, Bottom, Bottom-right
                 ];
 
+                // Look in each direction and record what we see
                 for (let dir of directions) {
                     inputs.push(this.lookInDirection(dir[0], dir[1]));
                 }
 
-                return inputs;
+                return inputs; // Array of 8 values representing what creature sees
             }
 
+            // LOOK IN DIRECTION - Cast a "ray" in a specific direction to see what's there
+            // This simulates how creatures perceive their environment
+            // Returns different values based on what's detected
             lookInDirection(dirX, dirY) {
+                // Cast vision ray up to VISION_RANGE distance
                 for (let distance = 1; distance <= CONFIG.VISION_RANGE; distance++) {
                     let checkX = this.x + (dirX * distance);
                     let checkY = this.y + (dirY * distance);
                     
-                    // Check bounds
+                    // Check if we've hit world boundaries
                     if (checkX < 0 || checkX >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
                         checkY < 0 || checkY >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
-                        return 0; // Boundary
+                        return 0; // Boundary detected
                     }
                     
-                    // Check walls
+                    // Check for walls
                     for (let wall of walls) {
                         if (wall.x === checkX && wall.y === checkY) {
-                            return 0; // Wall
+                            return 0; // Wall detected
                         }
                     }
                     
-                    // Check creatures
+                    // Check for other creatures
                     for (let creature of creatures) {
                         if (creature !== this && creature.isAlive && 
                             creature.x === checkX && creature.y === checkY) {
                             
-                            // Pack hunting enhancement
+                            // SPECIAL ABILITY: Pack hunting enhancement
+                            // Hunters with pack hunting see prey more clearly
                             if (this.specialAbilities.packHunting && 
                                 this.type === 'HUNTER' && creature.type === 'PREY') {
-                                return 0.9;
+                                return 0.9; // Enhanced prey detection
                             }
                             
-                            // Camouflage effect
+                            // SPECIAL ABILITY: Camouflage effect
+                            // Camouflaged prey are invisible to hunters
                             if (creature.specialAbilities.camouflage && 
                                 creature.abilityCooldowns.camouflage > 0 && 
                                 this.type === 'HUNTER') {
-                                continue; // Invisible
+                                continue; // Skip this creature (invisible)
                             }
                             
-                            // Return relationship values
+                            // Return different values based on relationship
                             if (this.type === 'HUNTER' && creature.type === 'PREY') {
-                                return 0.8; // Target
+                                return 0.8; // Target detected (good for hunters)
                             } else if (this.type === 'PREY' && creature.type === 'HUNTER') {
-                                return 0.2; // Danger
+                                return 0.2; // Danger detected (bad for prey)
                             } else {
-                                return 0.6; // Same type
+                                return 0.6; // Same type detected (neutral)
                             }
                         }
                     }
                 }
                 
-                return 1; // Clear
+                return 1; // Nothing detected (clear path)
             }
 
+            // THINK - This is where the AI "brain" makes decisions
+            // Called every frame for every living creature
+            // The neural network processes sensory input and decides how to move
             think() {
-                if (!this.isAlive) return;
+                if (!this.isAlive) return; // Dead creatures don't think
                 
+                // STEP 1: Get sensory input (what creature sees)
                 let inputs = this.getInputs();
+                
+                // STEP 2: Process through neural network (brain makes decision)
                 let outputs = this.brain.feedForward(inputs);
                 
+                // STEP 3: Choose movement direction based on highest output
                 let maxOutput = Math.max(...outputs);
                 let chosenDirection = outputs.indexOf(maxOutput);
                 
-                // Lethargy effect
+                // SPECIAL ABILITY: Lethargy (negative trait)
+                // Sometimes skip movement due to laziness
                 if (this.specialAbilities.lethargy && Math.random() < 0.3) {
-                    return;
+                    return; // Too tired to move
                 }
                 
-                // Anxiety effect - flee from others
+                // SPECIAL ABILITY: Anxiety (negative trait)
+                // Override brain decision to flee from other creatures
                 if (this.specialAbilities.anxiety) {
                     let nearby = creatures.filter(c => 
                         c !== this && c.isAlive &&
@@ -547,147 +849,179 @@
                     }
                 }
                 
+                // STEP 4: Execute the movement
                 this.move(chosenDirection);
             }
 
+            // GET DIRECTION AWAY FROM - Helper function for anxiety behavior
+            // Calculate which direction to move to get away from a target
             getDirectionAwayFrom(targetX, targetY) {
-                let dx = this.x - targetX;
-                let dy = this.y - targetY;
+                let dx = this.x - targetX; // Difference in X
+                let dy = this.y - targetY; // Difference in Y
                 
+                // Move in direction of largest difference
                 if (Math.abs(dx) > Math.abs(dy)) {
-                    return dx > 0 ? 3 : 2; // RIGHT or LEFT
+                    return dx > 0 ? 3 : 2; // Move RIGHT or LEFT
                 } else {
-                    return dy > 0 ? 1 : 0; // DOWN or UP
+                    return dy > 0 ? 1 : 0; // Move DOWN or UP
                 }
             }
 
+            // MOVE - Execute movement and handle all related systems
+            // This is where the creature actually changes position and spends energy
             move(direction) {
-                if (!this.isAlive) return;
+                if (!this.isAlive) return; // Dead creatures can't move
                 
                 let newX = this.x;
                 let newY = this.y;
-                let moveDistance = 1;
+                let moveDistance = 1; // Normal movement is 1 grid cell
                 
-                // Speed burst ability
+                // SPECIAL ABILITY: Speed Burst
+                // When energy is low, can move 2 cells at once (limited uses)
                 if (this.specialAbilities.speedBurst && 
-                    this.energy < CONFIG.STARTING_ENERGY * 0.3 && 
-                    this.abilityUses.speedBurst > 0 &&
-                    this.abilityCooldowns.speedBurst === 0) {
-                    moveDistance = 2;
-                    this.abilityUses.speedBurst--;
-                    this.abilityCooldowns.speedBurst = 30;
+                    this.energy < CONFIG.STARTING_ENERGY * 0.3 &&  // Only when energy < 30%
+                    this.abilityUses.speedBurst > 0 &&             // Must have uses left
+                    this.abilityCooldowns.speedBurst === 0) {      // Must not be on cooldown
+                    moveDistance = 2;                               // Double movement
+                    this.abilityUses.speedBurst--;                 // Use up one charge
+                    this.abilityCooldowns.speedBurst = 30;         // Set cooldown
                 }
                 
-                // Calculate new position
+                // Calculate new position based on chosen direction
+                // Direction mapping: 0=UP, 1=DOWN, 2=LEFT, 3=RIGHT
                 switch(direction) {
-                    case 0: newY -= moveDistance; break; // UP
-                    case 1: newY += moveDistance; break; // DOWN
-                    case 2: newX -= moveDistance; break; // LEFT
-                    case 3: newX += moveDistance; break; // RIGHT
+                    case 0: newY -= moveDistance; break; // Move UP
+                    case 1: newY += moveDistance; break; // Move DOWN
+                    case 2: newX -= moveDistance; break; // Move LEFT
+                    case 3: newX += moveDistance; break; // Move RIGHT
                 }
                 
-                // Try to move
+                // Try to move to new position
                 if (this.isPositionSafe(newX, newY)) {
+                    // SUCCESSFUL MOVEMENT
                     let actuallyMoved = (this.x !== newX || this.y !== newY);
                     
-                    this.x = newX;
+                    this.x = newX;  // Update position
                     this.y = newY;
                     
                     if (actuallyMoved) {
-                        this.framesSinceLastMove = 0;
-                        this.totalDistance += moveDistance;
+                        this.framesSinceLastMove = 0;           // Reset inactivity counter
+                        this.totalDistance += moveDistance;     // Track total movement
                     } else {
-                        this.framesSinceLastMove++;
+                        this.framesSinceLastMove++;             // Increment inactivity
                     }
                     
-                    // Energy cost
+                    // ENERGY COST CALCULATION
                     let energyCost = CONFIG.ENERGY_MOVE_COST;
+                    
+                    // SPECIAL ABILITY: Energy Efficiency (positive trait)
                     if (this.specialAbilities.energyEfficiency) {
-                        energyCost *= 0.7;
-                    }
-                    if (this.specialAbilities.lethargy) {
-                        energyCost *= 1.5;
+                        energyCost *= 0.7; // 30% less energy cost
                     }
                     
-                    this.energy -= energyCost;
+                    // SPECIAL ABILITY: Lethargy (negative trait)
+                    if (this.specialAbilities.lethargy) {
+                        energyCost *= 1.5; // 50% more energy cost
+                    }
+                    
+                    this.energy -= energyCost; // Deduct energy for movement
                 } else {
+                    // MOVEMENT BLOCKED - hit wall or other creature
                     this.framesSinceLastMove++;
-                    this.handleWallCollision(newX, newY);
+                    this.handleWallCollision(newX, newY); // Check if we hit a wall
                 }
                 
-                // Update state
-                this.lifetimeFrames++;
-                this.updateAbilityCooldowns();
+                // UPDATE CREATURE STATE (happens every frame regardless of movement)
+                this.lifetimeFrames++;              // Age the creature
+                this.updateAbilityCooldowns();      // Reduce cooldown timers
                 
-                // Energy decay
+                // ENERGY DECAY - All creatures lose energy over time (survival pressure)
                 this.energy -= CONFIG.ENERGY_DECAY;
                 if (this.energy < 5 && this.energy > 0) {
-                    this.energy -= 0.1; // Extra drain for very low energy
+                    this.energy -= 0.1; // Extra drain when very low energy (death spiral)
                 }
                 
-                // Survival bonus for prey
+                // SURVIVAL BONUS for prey
+                // Prey get small energy bonus for surviving (balances the game)
                 if (this.type === 'PREY') {
                     this.energy += CONFIG.ENERGY_GAIN_SURVIVAL;
                 }
                 
+                // CHECK FOR DEATH CONDITIONS
                 this.checkElimination();
             }
 
+            // HANDLE WALL COLLISION - Damage creature when hitting walls
+            // Walls create environmental hazards that creatures must learn to avoid
             handleWallCollision(attemptedX, attemptedY) {
                 for (let wall of walls) {
                     if (wall.x === attemptedX && wall.y === attemptedY) {
-                        this.energy -= CONFIG.WALL_KILL_ENERGY;
+                        this.energy -= CONFIG.WALL_KILL_ENERGY; // Significant energy loss
                         return;
                     }
                 }
             }
 
+            // UPDATE ABILITY COOLDOWNS - Manage special ability timing
+            // Prevents spam use of special abilities and adds strategic timing
             updateAbilityCooldowns() {
+                // Reduce all cooldown timers by 1 each frame
                 Object.keys(this.abilityCooldowns).forEach(ability => {
                     if (this.abilityCooldowns[ability] > 0) {
                         this.abilityCooldowns[ability]--;
                     }
                 });
                 
-                // Activate camouflage
+                // SPECIAL ABILITY: Auto-activate camouflage for prey
+                // Prey creatures randomly become invisible when not on cooldown
                 if (this.specialAbilities.camouflage && 
                     this.type === 'PREY' && 
                     this.abilityCooldowns.camouflage === 0 &&
-                    Math.random() < 0.05) {
-                    this.abilityCooldowns.camouflage = 60;
+                    Math.random() < 0.05) { // 5% chance each frame
+                    this.abilityCooldowns.camouflage = 60; // 1 second of invisibility
                 }
             }
 
+            // CHECK ELIMINATION - Determine if creature should die
+            // Multiple death conditions create survival pressure for evolution
             checkElimination() {
-                if (!this.isAlive) return;
+                if (!this.isAlive) return; // Already dead
                 
+                // Clamp energy to valid range
                 this.energy = Math.max(0, Math.min(CONFIG.MAX_ENERGY, this.energy));
                 
+                // DEATH CONDITION 1: Energy depletion
                 if (this.energy <= CONFIG.ENERGY_DEATH_THRESHOLD) {
                     this.eliminate('Energy Depleted');
-                } else if (this.timesTagged >= CONFIG.MAX_TAGS_BEFORE_OUT) {
+                } 
+                // DEATH CONDITION 2: Tagged too many times (prey only)
+                else if (this.timesTagged >= CONFIG.MAX_TAGS_BEFORE_OUT) {
                     this.eliminate('Tagged Out');
-                } else if (this.framesSinceLastMove > 500) {
+                } 
+                // DEATH CONDITION 3: Chronic inactivity (prevents stalling)
+                else if (this.framesSinceLastMove > 500) {
                     this.eliminate('Chronic Inactivity');
                 }
             }
 
+            // ELIMINATE - Handle creature death and prepare for respawn
+            // This triggers the continuous evolution cycle
             eliminate(reason) {
                 this.isAlive = false;
-                this.calculateFinalFitness();
+                this.calculateFinalFitness(); // Determine how successful this creature was
                 
-                // Queue for respawn
+                // Add to respawn queue for continuous evolution
                 respawnQueue.push({
                     type: this.type,
                     brain: this.brain,
                     fitness: this.fitness,
-                    respawnFrame: frameCount + CONFIG.RESPAWN_DELAY
+                    respawnFrame: frameCount + CONFIG.RESPAWN_DELAY // When to respawn
                 });
                 
-                // Update fitness history
+                // Update fitness history for parent selection
                 if (this.type === 'HUNTER') {
                     fitnessHistory.hunters.push({brain: this.brain.copy(), fitness: this.fitness});
-                    if (fitnessHistory.hunters.length > 20) fitnessHistory.hunters.shift();
+                    if (fitnessHistory.hunters.length > 20) fitnessHistory.hunters.shift(); // Keep only recent history
                 } else {
                     fitnessHistory.prey.push({brain: this.brain.copy(), fitness: this.fitness});
                     if (fitnessHistory.prey.length > 20) fitnessHistory.prey.shift();
@@ -696,123 +1030,156 @@
                 console.log(`${this.type} eliminated (${reason}): Fitness ${this.fitness.toFixed(1)}`);
             }
 
+            // CALCULATE FINAL FITNESS - Determine evolutionary success score
+            // Higher fitness = more likely to be selected as parent for next generation
+            // Different scoring for hunters vs prey creates balanced evolution
             calculateFinalFitness() {
                 this.fitness = 0;
                 
                 if (this.type === 'HUNTER') {
-                    this.fitness += this.totalTags * CONFIG.HUNTER_TAG_REWARD;
-                    this.fitness += this.lifetimeFrames * CONFIG.HUNTER_SURVIVAL_REWARD;
-                    this.fitness += this.totalDistance * 0.1;
+                    // HUNTER FITNESS: Reward aggressive, successful hunting
+                    this.fitness += this.totalTags * CONFIG.HUNTER_TAG_REWARD;       // Big reward for tagging prey
+                    this.fitness += this.lifetimeFrames * CONFIG.HUNTER_SURVIVAL_REWARD; // Small reward for survival
+                    this.fitness += this.totalDistance * 0.1;                       // Tiny reward for movement
                 } else {
-                    this.fitness += this.lifetimeFrames * CONFIG.PREY_SURVIVAL_REWARD;
-                    this.fitness += this.totalTags * CONFIG.PREY_EVASION_REWARD; // Evasions
-                    this.fitness += this.maxEnergyReached * 0.2;
+                    // PREY FITNESS: Reward evasive, survival behavior
+                    this.fitness += this.lifetimeFrames * CONFIG.PREY_SURVIVAL_REWARD;   // Big reward for survival
+                    this.fitness += this.totalTags * CONFIG.PREY_EVASION_REWARD;         // Reward successful evasions
+                    this.fitness += this.maxEnergyReached * 0.2;                         // Reward energy management
                 }
                 
+                // SURVIVAL BONUS: Extra points for staying alive
                 if (this.isAlive) {
                     this.fitness += 100;
                 }
                 
-                this.fitness = Math.max(0, this.fitness);
+                this.fitness = Math.max(0, this.fitness); // Never negative
             }
 
+            // CHECK FOR TAGS - Handle hunter-prey interactions
+            // This is the core combat system where hunters try to tag prey
+            // Called every frame for every creature to check for nearby targets
             checkForTags() {
-                if (!this.isAlive || this.tagCooldown > 0) return;
+                if (!this.isAlive || this.tagCooldown > 0) return; // Can't tag if dead or on cooldown
                 
+                // Only hunters can initiate tags
                 for (let other of creatures) {
                     if (other !== this && other.isAlive) {
+                        // Calculate distance between creatures
                         let distance = Math.sqrt(
                             Math.pow(this.x - other.x, 2) + 
                             Math.pow(this.y - other.y, 2)
                         );
                         
+                        // Check if hunter is close enough to tag prey
                         if (distance <= CONFIG.TAG_DISTANCE && 
                             this.type === 'HUNTER' && other.type === 'PREY') {
                             
-                            // Evasion check
+                            // SPECIAL ABILITY: Evasion check (prey defense)
+                            // Prey with evasion ability can dodge incoming tags
                             if (other.specialAbilities.evasion && 
                                 other.abilityCooldowns.evasion === 0 && 
-                                Math.random() < 0.3) {
-                                other.energy -= 5;
-                                other.abilityCooldowns.evasion = 45;
-                                other.totalTags++; // Count evasion
+                                Math.random() < 0.3) { // 30% evasion chance
+                                other.energy -= 5;                      // Small energy cost for evasion
+                                other.abilityCooldowns.evasion = 45;    // Set cooldown
+                                other.totalTags++;                      // Count as successful evasion
                                 console.log('Prey evaded!');
-                                return;
+                                return; // Tag attempt failed
                             }
                             
-                            // Successful tag
-                            this.totalTags++;
-                            other.timesTagged++;
-                            this.tagCooldown = 15;
+                            // SUCCESSFUL TAG - Hunter caught prey
+                            this.totalTags++;           // Increment hunter's tag count
+                            other.timesTagged++;        // Increment prey's tagged count
+                            this.tagCooldown = 15;      // Prevent spam tagging
                             
-                            let energyGain = CONFIG.ENERGY_GAIN_TAG;
-                            let energyLoss = CONFIG.ENERGY_GAIN_TAG * 0.5;
+                            // ENERGY TRANSFER CALCULATION
+                            let energyGain = CONFIG.ENERGY_GAIN_TAG;        // Hunter gains energy
+                            let energyLoss = CONFIG.ENERGY_GAIN_TAG * 0.5;  // Prey loses less energy
                             
+                            // SPECIAL ABILITY: Energy Vampire (hunter enhancement)
+                            // Vampiric hunters drain more energy from their victims
                             if (this.specialAbilities.energyVampire) {
-                                energyGain *= 1.5;
-                                energyLoss *= 1.3;
+                                energyGain *= 1.5;  // 50% more energy gain
+                                energyLoss *= 1.3;  // 30% more energy drain
                             }
                             
+                            // Apply energy changes
                             this.energy += energyGain;
                             this.maxEnergyReached = Math.max(this.maxEnergyReached, this.energy);
                             other.energy -= energyLoss;
                             
+                            // Update global statistics
                             stats.totalTags++;
                             console.log(`Hunter tagged prey! Tags: ${this.totalTags}`);
                         }
                     }
                 }
                 
+                // Reduce tag cooldown timer
                 if (this.tagCooldown > 0) this.tagCooldown--;
             }
 
+            // DRAW - Render the creature on the canvas
+            // This handles all visual representation including special effects
             draw() {
-                if (!this.isAlive) return;
+                if (!this.isAlive) return; // Don't draw dead creatures
                 
+                // Convert grid coordinates to pixel coordinates
                 let pixelX = this.x * CONFIG.GRID_SIZE;
                 let pixelY = this.y * CONFIG.GRID_SIZE;
                 
-                let color = CONFIG.COLORS[this.type];
-                let alpha = Math.max(0.3, this.energy / CONFIG.STARTING_ENERGY);
+                // MAIN BODY COLOR AND TRANSPARENCY
+                let color = CONFIG.COLORS[this.type];  // Red for hunters, blue for prey
+                let alpha = Math.max(0.3, this.energy / CONFIG.STARTING_ENERGY); // Fade as energy decreases
                 
                 ctx.fillStyle = color;
                 ctx.globalAlpha = alpha;
                 
+                // Draw main creature body
                 ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
                 
-                // Energy bar
+                // Draw energy bar above creature
                 this.drawEnergyBar(pixelX, pixelY);
                 
-                // Camouflage effect
+                // SPECIAL ABILITY: Camouflage visual effect
+                // Make camouflaged prey semi-transparent
                 if (this.specialAbilities.camouflage && this.abilityCooldowns.camouflage > 0) {
-                    ctx.globalAlpha = 0.3;
+                    ctx.globalAlpha = 0.3; // Very transparent
                     ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
                 }
                 
-                // Ability indicators
+                // Draw special ability indicators
                 this.drawAbilityIndicators(pixelX, pixelY);
                 
-                ctx.globalAlpha = 1.0;
+                ctx.globalAlpha = 1.0; // Reset transparency
             }
 
+            // DRAW ENERGY BAR - Visual indicator of creature's health
+            // Helps players understand creature state and energy management
             drawEnergyBar(x, y) {
                 let barWidth = CONFIG.GRID_SIZE - 4;
                 let barHeight = 3;
                 let energyPercentage = Math.max(0, this.energy / CONFIG.STARTING_ENERGY);
                 
+                // Draw background bar
                 ctx.fillStyle = '#333333';
                 ctx.globalAlpha = 0.8;
                 ctx.fillRect(x + 2, y - 6, barWidth, barHeight);
                 
-                ctx.fillStyle = energyPercentage > 0.6 ? '#00ff00' : 
-                               energyPercentage > 0.3 ? '#ffff00' : '#ff0000';
+                // Draw energy level with color coding
+                ctx.fillStyle = energyPercentage > 0.6 ? '#00ff00' :  // Green for high energy
+                               energyPercentage > 0.3 ? '#ffff00' :  // Yellow for medium energy
+                               '#ff0000';                            // Red for low energy
                 ctx.fillRect(x + 2, y - 6, barWidth * energyPercentage, barHeight);
             }
 
+            // DRAW ABILITY INDICATORS - Show active special abilities
+            // Small colored squares that indicate what abilities creature has
             drawAbilityIndicators(x, y) {
                 let size = 3;
                 let offsetY = 0;
                 
+                // Pack hunting indicator (orange square)
                 if (this.specialAbilities.packHunting && this.type === 'HUNTER') {
                     ctx.fillStyle = '#ff8800';
                     ctx.globalAlpha = 0.8;
@@ -820,6 +1187,7 @@
                     offsetY += 4;
                 }
                 
+                // Speed burst indicator (yellow square, only when charges available)
                 if (this.specialAbilities.speedBurst && this.abilityUses.speedBurst > 0) {
                     ctx.fillStyle = '#ffff00';
                     ctx.globalAlpha = 0.8;
