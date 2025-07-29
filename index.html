@@ -2080,7 +2080,7 @@
             // Input to hidden connections
             for (let i = 0; i < inputs; i++) {
                 for (let h = 0; h < hidden; h++) {
-                    const weight = network.weights1[i][h];
+                    const weight = network.inputToHidden[i][h];
                     ctx.strokeStyle = weight > 0 ? '#00ff00' : '#ff0000';
                     ctx.lineWidth = Math.abs(weight) * 2;
                     ctx.globalAlpha = 0.6;
@@ -2095,7 +2095,7 @@
             // Hidden to output connections
             for (let h = 0; h < hidden; h++) {
                 for (let o = 0; o < outputs; o++) {
-                    const weight = network.weights2[h][o];
+                    const weight = network.hiddenToOutput[h][o];
                     ctx.strokeStyle = weight > 0 ? '#00ff00' : '#ff0000';
                     ctx.lineWidth = Math.abs(weight) * 2;
                     ctx.globalAlpha = 0.6;
