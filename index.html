@@ -523,17 +523,11 @@
             
             // Grid and creature settings
             GRID_SIZE: 30,              // Size of each grid cell
-            POPULATION_SIZE: 50,        // Number of creatures
             
             // Neural network parameters
             INPUT_NODES: 8,             // What creatures can "see"
             HIDDEN_NODES: 6,            // Processing power
             OUTPUT_NODES: 4,            // Movement directions
-            
-            // Evolution parameters
-            MUTATION_RATE: 0.1,         // How much creatures change between generations
-            CROSSOVER_RATE: 0.7,       // How often parents combine traits
-            ELITE_PERCENTAGE: 0.2,     // Top performers that survive unchanged
             
             // Game mechanics
             CREATURE_SPEED: 1,          // How fast creatures move
@@ -541,100 +535,84 @@
             TAG_DISTANCE: 1,            // Distance needed to tag
             
             // Energy system
-            STARTING_ENERGY: 100,       // Energy creatures start with
-            MAX_ENERGY: 150,            // Maximum energy a creature can have
-            ENERGY_DECAY: 0.2,          // Energy lost per frame
-            ENERGY_MOVE_COST: 0.5,      // Extra energy cost for moving
-            ENERGY_GAIN_SURVIVAL: 0.3,  // Energy gained for surviving (prey/hiders)
-            ENERGY_GAIN_TAG: 20,        // Energy gained for successful tag
+            STARTING_ENERGY: 80,        // Energy creatures start with
+            MAX_ENERGY: 120,            // Maximum energy a creature can have
+            ENERGY_DECAY: 0.15,         // Energy lost per frame
+            ENERGY_MOVE_COST: 0.3,      // Extra energy cost for moving
+            ENERGY_GAIN_SURVIVAL: 0.1,  // Energy gained for surviving (prey)
+            ENERGY_GAIN_TAG: 15,        // Energy gained for successful tag
             
             // Elimination system
-            MAX_TAGS_BEFORE_OUT: 3,     // How many times you can be tagged before elimination
-            ENERGY_DEATH_THRESHOLD: 0, // Energy level that causes death
+            MAX_TAGS_BEFORE_OUT: 2,     // How many times you can be tagged before elimination
+            ENERGY_DEATH_THRESHOLD: 0.1, // Energy level that causes death
             
-            // NEW: Cooperative mechanics
-            SAME_TYPE_HEAL_CHANCE: 0.8, // Chance that same-type contact removes tags
-            HEAL_ENERGY_COST: 5,        // Energy cost for healing another creature
+            // Cooperative mechanics
+            SAME_TYPE_HEAL_CHANCE: 0.6, // Chance that same-type contact removes tags
+            HEAL_ENERGY_COST: 8,        // Energy cost for healing another creature
             
-            // NEW: Special mutation system
-            MUTATION_ACTIVATION_RATE: 0.05, // Chance to gain new abilities during mutation
-            MAX_SPECIAL_ABILITIES: 3,   // Maximum special abilities per creature
+            // Special mutation system
+            MUTATION_ACTIVATION_RATE: 0.08, // Chance to gain new abilities during mutation
+            MAX_SPECIAL_ABILITIES: 2,   // Maximum special abilities per creature
             
             // Environment
-            WALL_DENSITY: 0.05,         // Percentage of grid filled with deadly walls
-            WALL_KILL_ENERGY: 50,       // Energy lost when touching walls
+            WALL_DENSITY: 0.03,         // Percentage of grid filled with deadly walls
+            WALL_KILL_ENERGY: 30,       // Energy lost when touching walls
             
-            // NEW: Food system
-            FOOD_ENERGY_VALUE: 30,      // Energy gained from eating food
-            FOOD_DECAY_RATE: 0.1,       // How fast food decays over time
-            FOOD_MAX_AGE: 1000,         // Maximum frames before food expires
-            FOOD_CLUSTER_RADIUS: 3,     // Distance to consider for food clustering
-            FOOD_CLUSTER_MIN_DEATHS: 2, // Minimum deaths needed to create cluster
-            FOOD_CLUSTER_BONUS: 1.5,    // Multiplier for food value in clusters
-            FOOD_DECAY_FRAMES: 300,     // Frames to remember death locations
-            DEATH_TO_FOOD_CHANCE: 0.8,  // Chance that death creates food
+            // NEAT topology evolution
+            NODE_ADD_RATE: 0.06,        // Chance to add a hidden node during mutation
+            NODE_REMOVE_RATE: 0.03,     // Chance to remove a hidden node during mutation
+            MIN_HIDDEN_NODES: 3,        // Minimum number of hidden nodes
+            MAX_HIDDEN_NODES: 10,       // Maximum number of hidden nodes
             
-            // Evolution timing
-            GENERATION_LENGTH: 3000,    // Frames before evolution (longer for new mechanics)
+            // NEW: Continuous evolution system
+            MAX_HUNTERS: 15,            // Maximum number of hunters
+            MAX_PREY: 15,               // Maximum number of prey
+            RESPAWN_DELAY: 60,          // Frames to wait before respawning
+            MUTATION_RATE: 0.3,         // Base mutation rate for respawned creatures
+            ELITE_THRESHOLD: 0.7,       // Top 70% of performers get priority for reproduction
+            
+            // Fitness rewards
+            HUNTER_TAG_REWARD: 100,     // Points for tagging prey
+            HUNTER_SURVIVAL_REWARD: 0.5,// Points per frame alive
+            PREY_SURVIVAL_REWARD: 1.0,  // Points per frame alive
+            PREY_EVASION_REWARD: 50,    // Points for avoiding tags
+            
             
             // Colors for different creature types
             COLORS: {
-                HUNTER: '#ff4444',      // Red - aggressive/chaser
-                PREY: '#4444ff',        // Blue - defensive/hider
-                NEUTRAL: '#44ff44',     // Green - balanced
+                HUNTER: '#ff4444',      // Red - aggressive hunters
+                PREY: '#4444ff',        // Blue - defensive prey
                 WALL: '#9966cc'         // Light ghost purple - boundaries
-            },
-            
-            // NEW: Simulation timing and display
-            SHOW_TIMER: true,           // Show simulation timer
-            MAX_SPEED_MULTIPLIER: 50,   // Allow up to 50x speed for fast iteration
-            
-            // NEW: NEAT topology evolution
-            NODE_ADD_RATE: 0.05,        // Chance to add a hidden node during mutation
-            NODE_REMOVE_RATE: 0.02,     // Chance to remove a hidden node during mutation
-            MIN_HIDDEN_NODES: 3,        // Minimum number of hidden nodes
-            MAX_HIDDEN_NODES: 12,       // Maximum number of hidden nodes
-            
-            // NEW: Turbo evolution mode
-            TURBO_MODE: false,          // Enable turbo evolution mode
-            TURBO_GENERATIONS: 100,     // How many generations to run in turbo mode
-            TURBO_STATS_INTERVAL: 10    // How often to update stats in turbo mode
+            }
         };
 
         // ===== GLOBAL VARIABLES =====
         let canvas, ctx;
         let creatures = [];
         let walls = [];
-        let foods = [];
-        let generation = 1;
         let frameCount = 0;
         let isPaused = false;
         let gameMode = 'tag';
+        let simulationSpeed = CONFIG.DEFAULT_SIMULATION_SPEED;
+        
+        // NEW: Continuous evolution tracking
+        let respawnQueue = [];              // Queue of creatures waiting to respawn
+        let fitnessHistory = {              // Track performance history for breeding
+            hunters: [],
+            prey: []
+        };
+        let totalCreaturesSpawned = 0;      // Track total births for unique IDs
+        
         let stats = {
-            tags: 0,
-            bestFitness: 0,
-            avgFitness: 0,
-            aliveCount: 0,
-            eliminatedCount: 0
+            huntersAlive: 0,
+            preyAlive: 0,
+            totalTags: 0,
+            avgHunterFitness: 0,
+            avgPreyFitness: 0,
+            bestHunterFitness: 0,
+            bestPreyFitness: 0,
+            totalRespawns: 0
         };
-        
-        // Food system tracking
-        let deathMap = new Map(); // Track deaths by location for clustering
-        
-        // NEW: Turbo evolution mode
-        let turboModeActive = false;
-        let turboGenerationsLeft = 0;
-        let turboStats = {
-            startGeneration: 0,
-            bestFitnessHistory: [],
-            avgFitnessHistory: [],
-            topologyChanges: 0
-        };
-        
-        // NEW: Simulation timing
-        let simulationStartTime = 0;
-        let simulationPausedTime = 0;
-        let lastPauseStart = 0;
 
         // ===== NEURAL NETWORK CLASS =====
         // This represents the "brain" of each creature
@@ -981,165 +959,77 @@
             }
         }
 
-        // ===== FOOD CLASS =====
-        // Represents food sources created from dead creatures
-        class Food {
-            constructor(x, y, energy = CONFIG.FOOD_ENERGY_VALUE) {
-                this.x = x;
-                this.y = y;
-                this.energy = energy;
-                this.type = 'FOOD';
-                this.age = 0;
-                this.maxAge = CONFIG.FOOD_MAX_AGE;
-                this.decayRate = CONFIG.FOOD_DECAY_RATE;
-            }
-
-            // Update food state (decay over time)
-            update() {
-                this.age++;
-                // Decay energy over time
-                this.energy = Math.max(0, this.energy - this.decayRate);
-                
-                // Check if food has expired
-                return this.age < this.maxAge && this.energy > 0;
-            }
-
-            // Draw the food
-            draw() {
-                let pixelX = this.x * CONFIG.GRID_SIZE;
-                let pixelY = this.y * CONFIG.GRID_SIZE;
-                
-                // Food size based on energy content
-                let energyRatio = this.energy / CONFIG.FOOD_ENERGY_VALUE;
-                let size = Math.max(4, CONFIG.GRID_SIZE * 0.8 * energyRatio);
-                let offset = (CONFIG.GRID_SIZE - size) / 2;
-                
-                // Green color with alpha based on energy
-                ctx.fillStyle = `rgba(0, 255, 0, ${0.3 + 0.7 * energyRatio})`;
-                ctx.fillRect(pixelX + offset, pixelY + offset, size, size);
-                
-                // Add sparkle effect for fresh food
-                if (this.age < CONFIG.FOOD_MAX_AGE * 0.3) {
-                    ctx.fillStyle = '#ffffff';
-                    let sparkleSize = 2;
-                    ctx.fillRect(pixelX + offset + size/4, pixelY + offset + size/4, sparkleSize, sparkleSize);
-                    ctx.fillRect(pixelX + offset + 3*size/4, pixelY + offset + 3*size/4, sparkleSize, sparkleSize);
-                }
-            }
-
-            // Check if creature can consume this food
-            canBeConsumed() {
-                return this.energy > 0;
-            }
-
-            // Consume food and return energy gained
-            consume() {
-                let energyGained = this.energy;
-                this.energy = 0;
-                return energyGained;
-            }
-
-            // Create food cluster when multiple deaths occur nearby
-            static createCluster(x, y, deathCount) {
-                let foods = [];
-                let clusterEnergy = CONFIG.FOOD_ENERGY_VALUE + (deathCount - 1) * CONFIG.FOOD_CLUSTER_BONUS;
-                
-                // Create central food source
-                foods.push(new Food(x, y, clusterEnergy));
-                
-                // Add smaller food sources around the cluster
-                if (deathCount >= CONFIG.FOOD_CLUSTER_MIN_DEATHS) {
-                    let directions = [
-                        {dx: -1, dy: 0}, {dx: 1, dy: 0},
-                        {dx: 0, dy: -1}, {dx: 0, dy: 1},
-                        {dx: -1, dy: -1}, {dx: 1, dy: 1},
-                        {dx: -1, dy: 1}, {dx: 1, dy: -1}
-                    ];
-                    
-                    for (let i = 0; i < Math.min(deathCount - 1, 4); i++) {
-                        let dir = directions[i % directions.length];
-                        let newX = x + dir.dx;
-                        let newY = y + dir.dy;
-                        
-                        // Check bounds
-                        if (newX >= 1 && newX < CONFIG.GRID_WIDTH - 1 && 
-                            newY >= 1 && newY < CONFIG.GRID_HEIGHT - 1) {
-                            foods.push(new Food(newX, newY, CONFIG.FOOD_ENERGY_VALUE * 0.7));
-                        }
-                    }
-                }
-                
-                return foods;
-            }
-        }
-
         // ===== CREATURE CLASS =====
-        // Represents individual creatures in the simulation
+        // Represents individual creatures in the continuous evolution simulation
         class Creature {
-            constructor(x, y, type = 'NEUTRAL') {
+            constructor(x, y, type, parentBrain = null) {
                 // Position on the grid
                 this.x = x || Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE));
                 this.y = y || Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE));
                 
                 // Creature properties
-                this.type = type;               // HUNTER, PREY, or NEUTRAL
-                this.brain = new NeuralNetwork(); // Each creature gets unique random topology
-                this.fitness = 0;               // How well this creature performs
-                this.energy = CONFIG.STARTING_ENERGY; // Energy level (affects survival)
-                this.age = 0;                   // How long the creature has lived
-                
-                // NEW: Elimination system
+                this.type = type;               // HUNTER or PREY
+                this.id = totalCreaturesSpawned++; // Unique ID for tracking
                 this.isAlive = true;            // Whether creature is still active
-                this.timesTagged = 0;           // How many times this creature was tagged
-                this.eliminationReason = '';   // Why creature was eliminated
                 
-                // NEW: Special abilities system
+                // Brain - inherit from parent or create new
+                if (parentBrain) {
+                    this.brain = parentBrain.copy();
+                    this.brain.mutate(CONFIG.MUTATION_RATE);
+                    this.brain.mutateTopology();
+                } else {
+                    this.brain = new NeuralNetwork();
+                }
+                
+                // Fitness tracking
+                this.fitness = 0;               // Current performance score
+                this.lifetimeFrames = 0;        // How long this life lasted
+                this.totalTags = 0;             // Tags made (hunters) or avoided (prey)
+                this.energyEfficiencyScore = 0; // How well they manage energy
+                
+                // Energy system
+                this.energy = CONFIG.STARTING_ENERGY;
+                this.maxEnergyReached = CONFIG.STARTING_ENERGY;
+                
+                // Combat system
+                this.timesTagged = 0;           // How many times this creature was tagged
+                this.tagCooldown = 0;           // Prevent spam tagging
+                
+                // Movement tracking
+                this.lastMove = { x: 0, y: 0 };
+                this.framesSinceLastMove = 0;
+                this.totalDistance = 0;         // Track exploration
+                
+                // Special abilities (simplified)
                 this.specialAbilities = {
                     // Hunter abilities
-                    packHunting: false,         // See other hunters' targets
+                    packHunting: false,         // Enhanced vision for prey detection
                     energyVampire: false,       // Drain more energy when tagging
-                    wallBounce: false,          // Bounce off walls instead of taking damage
-                    speedBurst: false,          // Temporary speed boost when low energy
-                    territorialInstinct: false, // Gain energy when near other hunters
+                    speedBurst: false,          // Temporary speed boost
                     
                     // Prey abilities
-                    camouflage: false,          // Harder to detect by hunters
                     evasion: false,             // Chance to avoid being tagged
                     energyEfficiency: false,    // Use less energy when moving
-                    wallPhasing: false,         // Can pass through walls (limited uses)
-                    groupHealing: false,        // Heal nearby prey more effectively
+                    camouflage: false,          // Harder to detect
                     
-                    // NEW: Negative mutations (can affect both types)
-                    anxiety: false,             // Avoid being near others (blocks group healing)
-                    aggression: false,          // Attack own type occasionally
-                    paranoia: false,            // Constantly change direction, waste energy
+                    // Negative traits
                     lethargy: false,            // Move slower, use more energy
-                    confusion: false            // Sometimes move in wrong direction
+                    anxiety: false              // Avoid others, reducing cooperation
                 };
-                this.specialAbilityUses = {     // Limited-use abilities
-                    wallPhasing: 3,             // Number of times can phase through walls
-                    speedBurst: 5,              // Number of speed bursts available
+                this.abilityUses = {
+                    speedBurst: 3,              // Limited uses per life
                 };
-                this.abilityCountdown = {       // Cooldowns for abilities
+                this.abilityCooldowns = {
                     speedBurst: 0,
-                    camouflage: 0,
                     evasion: 0,
+                    camouflage: 0
                 };
                 
-                // Movement and behavior
-                this.lastMove = { x: 0, y: 0 }; // Track movement for fitness
-                this.lastPosition = { x: this.x, y: this.y }; // Track previous position
-                this.framesSinceLastMove = 0;   // Track how long since last movement
-                this.tags = 0;                  // Number of successful tags
-                this.timeAlive = 0;             // Survival time
-                this.timeSinceLastTag = 0;      // Used for fitness calculation
-                this.timesSurvived = 0;         // Frames survived without being tagged
-                
-                // Ensure starting position is not on a wall
+                // Ensure starting position is safe
                 this.findSafeStartingPosition();
             }
 
-            // NEW: Find a safe starting position (not on walls or other creatures)
+            // Find a safe starting position (not on walls or other creatures)
             findSafeStartingPosition() {
                 let attempts = 0;
                 let maxAttempts = 100;
@@ -1155,12 +1045,9 @@
                     }
                     attempts++;
                 }
-                
-                // If no safe position found, use current position and hope for the best
-                console.warn('Could not find safe starting position for creature');
             }
 
-            // NEW: Check if a position is safe (no walls, no other creatures)
+            // Check if a position is safe (no walls, no other creatures)
             isPositionSafe(x, y) {
                 // Check boundaries
                 if (x < 0 || x >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
@@ -1184,6 +1071,421 @@
                 }
                 
                 return true;
+            }
+
+            // Get sensory input from the environment
+            getInputs() {
+                let inputs = [];
+                
+                // Vision system - look in 8 directions
+                const directions = [
+                    [-1, -1], [-1, 0], [-1, 1],
+                    [0, -1],           [0, 1],
+                    [1, -1],  [1, 0],  [1, 1]
+                ];
+
+                for (let dir of directions) {
+                    let visionData = this.lookInDirection(dir[0], dir[1]);
+                    inputs.push(visionData);
+                }
+
+                return inputs;
+            }
+
+            // Enhanced vision system 
+            lookInDirection(dirX, dirY) {
+                for (let distance = 1; distance <= CONFIG.VISION_RANGE; distance++) {
+                    let checkX = this.x + (dirX * distance);
+                    let checkY = this.y + (dirY * distance);
+                    
+                    // Check bounds
+                    if (checkX < 0 || checkX >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
+                        checkY < 0 || checkY >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
+                        return 0; // Hit boundary
+                    }
+                    
+                    // Check for walls
+                    for (let wall of walls) {
+                        if (wall.x === checkX && wall.y === checkY) {
+                            return 0; // Wall detected
+                        }
+                    }
+                    
+                    // Check for creatures
+                    for (let creature of creatures) {
+                        if (creature !== this && creature.isAlive && 
+                            creature.x === checkX && creature.y === checkY) {
+                            
+                            // Enhanced vision for pack hunting
+                            if (this.specialAbilities.packHunting && 
+                                this.type === 'HUNTER' && creature.type === 'PREY') {
+                                return 0.9; // Enhanced target detection
+                            }
+                            
+                            // Return different values based on relationship
+                            if (this.type === 'HUNTER' && creature.type === 'PREY') {
+                                return 0.8; // Target found!
+                            } else if (this.type === 'PREY' && creature.type === 'HUNTER') {
+                                return 0.2; // Danger!
+                            } else {
+                                return 0.6; // Same type
+                            }
+                        }
+                    }
+                }
+                
+                return 1; // Clear path
+            }
+
+            // Make movement decision using neural network
+            think() {
+                if (!this.isAlive) return;
+                
+                let inputs = this.getInputs();
+                let outputs = this.brain.feedForward(inputs);
+                
+                // Choose direction with highest output
+                let maxOutput = Math.max(...outputs);
+                let chosenDirection = outputs.indexOf(maxOutput);
+                
+                // Apply lethargy effect
+                if (this.specialAbilities.lethargy && Math.random() < 0.3) {
+                    return; // Skip movement due to lethargy
+                }
+                
+                // Apply anxiety (flee from others)
+                if (this.specialAbilities.anxiety) {
+                    let nearbyCreatures = creatures.filter(c => 
+                        c !== this && c.isAlive &&
+                        Math.abs(c.x - this.x) <= 2 && Math.abs(c.y - this.y) <= 2
+                    );
+                    
+                    if (nearbyCreatures.length > 0 && Math.random() < 0.6) {
+                        let nearest = nearbyCreatures[0];
+                        chosenDirection = this.getDirectionAwayFrom(nearest.x, nearest.y);
+                    }
+                }
+                
+                this.move(chosenDirection);
+            }
+
+            // Helper function to find direction away from a target
+            getDirectionAwayFrom(targetX, targetY) {
+                let dx = this.x - targetX;
+                let dy = this.y - targetY;
+                
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    return dx > 0 ? 3 : 2; // RIGHT or LEFT
+                } else {
+                    return dy > 0 ? 1 : 0; // DOWN or UP
+                }
+            }
+
+            // Move the creature
+            move(direction) {
+                if (!this.isAlive) return;
+                
+                let newX = this.x;
+                let newY = this.y;
+                
+                // Check for speed burst
+                let moveDistance = 1;
+                if (this.specialAbilities.speedBurst && 
+                    this.energy < CONFIG.STARTING_ENERGY * 0.3 && 
+                    this.abilityUses.speedBurst > 0 &&
+                    this.abilityCooldowns.speedBurst === 0) {
+                    moveDistance = 2;
+                    this.abilityUses.speedBurst--;
+                    this.abilityCooldowns.speedBurst = 30;
+                }
+                
+                // Calculate new position
+                switch(direction) {
+                    case 0: newY -= moveDistance; break; // UP
+                    case 1: newY += moveDistance; break; // DOWN
+                    case 2: newX -= moveDistance; break; // LEFT
+                    case 3: newX += moveDistance; break; // RIGHT
+                }
+                
+                // Check if move is valid
+                if (this.isPositionSafe(newX, newY)) {
+                    let actuallyMoved = (this.x !== newX || this.y !== newY);
+                    
+                    this.lastMove.x = newX - this.x;
+                    this.lastMove.y = newY - this.y;
+                    this.x = newX;
+                    this.y = newY;
+                    
+                    if (actuallyMoved) {
+                        this.framesSinceLastMove = 0;
+                        this.totalDistance += Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y);
+                    } else {
+                        this.framesSinceLastMove++;
+                    }
+                    
+                    // Energy cost
+                    let energyCost = CONFIG.ENERGY_MOVE_COST;
+                    if (this.specialAbilities.energyEfficiency) {
+                        energyCost *= 0.7;
+                    }
+                    if (this.specialAbilities.lethargy) {
+                        energyCost *= 1.5;
+                    }
+                    
+                    this.energy -= energyCost;
+                } else {
+                    this.framesSinceLastMove++;
+                    this.handleWallCollision(newX, newY);
+                }
+                
+                // Update creature state
+                this.lifetimeFrames++;
+                this.updateAbilityCooldowns();
+                
+                // Lose energy over time
+                this.energy -= CONFIG.ENERGY_DECAY;
+                
+                // Extra energy loss for very low energy creatures
+                if (this.energy < 5 && this.energy > 0) {
+                    this.energy -= 0.1;
+                }
+                
+                // Apply survival bonuses
+                if (this.type === 'PREY') {
+                    this.energy += CONFIG.ENERGY_GAIN_SURVIVAL;
+                }
+                
+                // Check for elimination
+                this.checkElimination();
+            }
+
+            // Handle wall collisions
+            handleWallCollision(attemptedX, attemptedY) {
+                for (let wall of walls) {
+                    if (wall.x === attemptedX && wall.y === attemptedY) {
+                        this.energy -= CONFIG.WALL_KILL_ENERGY;
+                        return;
+                    }
+                }
+            }
+
+            // Update ability cooldowns
+            updateAbilityCooldowns() {
+                Object.keys(this.abilityCooldowns).forEach(ability => {
+                    if (this.abilityCooldowns[ability] > 0) {
+                        this.abilityCooldowns[ability]--;
+                    }
+                });
+                
+                // Activate camouflage periodically
+                if (this.specialAbilities.camouflage && 
+                    this.type === 'PREY' && 
+                    this.abilityCooldowns.camouflage === 0 &&
+                    Math.random() < 0.05) {
+                    this.abilityCooldowns.camouflage = 60;
+                }
+            }
+
+            // Check for elimination conditions
+            checkElimination() {
+                if (!this.isAlive) return;
+                
+                // Enforce energy bounds
+                this.energy = Math.max(0, Math.min(CONFIG.MAX_ENERGY, this.energy));
+                
+                // Check energy death
+                if (this.energy <= CONFIG.ENERGY_DEATH_THRESHOLD) {
+                    this.eliminate('Energy Depleted');
+                    return;
+                }
+                
+                // Check tag limit
+                if (this.timesTagged >= CONFIG.MAX_TAGS_BEFORE_OUT) {
+                    this.eliminate('Tagged Out');
+                    return;
+                }
+                
+                // Chronic inactivity failsafe
+                if (this.framesSinceLastMove > 500) {
+                    this.eliminate('Chronic Inactivity');
+                    return;
+                }
+            }
+
+            // Eliminate creature and queue for respawn
+            eliminate(reason) {
+                this.isAlive = false;
+                this.calculateFinalFitness();
+                
+                // Add to respawn queue with delay
+                respawnQueue.push({
+                    type: this.type,
+                    brain: this.brain,
+                    fitness: this.fitness,
+                    respawnFrame: frameCount + CONFIG.RESPAWN_DELAY
+                });
+                
+                // Update fitness history for breeding
+                if (this.type === 'HUNTER') {
+                    fitnessHistory.hunters.push({brain: this.brain.copy(), fitness: this.fitness});
+                    if (fitnessHistory.hunters.length > 20) fitnessHistory.hunters.shift(); // Keep last 20
+                } else {
+                    fitnessHistory.prey.push({brain: this.brain.copy(), fitness: this.fitness});
+                    if (fitnessHistory.prey.length > 20) fitnessHistory.prey.shift(); // Keep last 20
+                }
+                
+                console.log(`${this.type} eliminated (${reason}): Fitness ${this.fitness.toFixed(1)}`);
+            }
+
+            // Calculate final fitness score for breeding selection
+            calculateFinalFitness() {
+                this.fitness = 0;
+                
+                if (this.type === 'HUNTER') {
+                    // Hunters rewarded for tags and survival
+                    this.fitness += this.totalTags * CONFIG.HUNTER_TAG_REWARD;
+                    this.fitness += this.lifetimeFrames * CONFIG.HUNTER_SURVIVAL_REWARD;
+                    this.fitness += this.totalDistance * 0.1; // Exploration bonus
+                } else {
+                    // Prey rewarded for survival and evasion
+                    this.fitness += this.lifetimeFrames * CONFIG.PREY_SURVIVAL_REWARD;
+                    this.fitness += (this.totalTags) * CONFIG.PREY_EVASION_REWARD; // Tags avoided
+                    this.fitness += this.maxEnergyReached * 0.2; // Energy management
+                }
+                
+                // Bonus for being alive
+                if (this.isAlive) {
+                    this.fitness += 100;
+                }
+                
+                this.fitness = Math.max(0, this.fitness);
+            }
+
+            // Check for tagging interactions
+            checkForTags() {
+                if (!this.isAlive || this.tagCooldown > 0) return;
+                
+                for (let other of creatures) {
+                    if (other !== this && other.isAlive) {
+                        let distance = Math.sqrt(
+                            Math.pow(this.x - other.x, 2) + 
+                            Math.pow(this.y - other.y, 2)
+                        );
+                        
+                        if (distance <= CONFIG.TAG_DISTANCE) {
+                            // Hunter tagging prey
+                            if (this.type === 'HUNTER' && other.type === 'PREY') {
+                                // Check for evasion
+                                if (other.specialAbilities.evasion && 
+                                    other.abilityCooldowns.evasion === 0 && 
+                                    Math.random() < 0.3) {
+                                    other.energy -= 5;
+                                    other.abilityCooldowns.evasion = 45;
+                                    other.totalTags++; // Count successful evasion
+                                    console.log('Prey evaded hunter!');
+                                    return;
+                                }
+                                
+                                // Successful tag
+                                this.totalTags++;
+                                other.timesTagged++;
+                                this.tagCooldown = 15; // Prevent spam
+                                
+                                // Energy transfer
+                                let energyGain = CONFIG.ENERGY_GAIN_TAG;
+                                let energyLoss = CONFIG.ENERGY_GAIN_TAG * 0.5;
+                                
+                                if (this.specialAbilities.energyVampire) {
+                                    energyGain *= 1.5;
+                                    energyLoss *= 1.3;
+                                }
+                                
+                                this.energy += energyGain;
+                                this.maxEnergyReached = Math.max(this.maxEnergyReached, this.energy);
+                                other.energy -= energyLoss;
+                                
+                                stats.totalTags++;
+                                console.log(`Hunter tagged prey! Tags: ${this.totalTags}`);
+                            }
+                        }
+                    }
+                }
+                
+                if (this.tagCooldown > 0) this.tagCooldown--;
+            }
+
+            // Draw the creature
+            draw() {
+                if (!this.isAlive) return;
+                
+                let pixelX = this.x * CONFIG.GRID_SIZE;
+                let pixelY = this.y * CONFIG.GRID_SIZE;
+                
+                // Choose color and transparency
+                let color = CONFIG.COLORS[this.type];
+                let alpha = Math.max(0.3, this.energy / CONFIG.STARTING_ENERGY);
+                
+                ctx.fillStyle = color;
+                ctx.globalAlpha = alpha;
+                
+                // Draw creature
+                ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                
+                // Energy bar
+                this.drawEnergyBar(pixelX, pixelY);
+                
+                // Camouflage effect
+                if (this.specialAbilities.camouflage && this.abilityCooldowns.camouflage > 0) {
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                }
+                
+                // Ability indicators
+                this.drawAbilityIndicators(pixelX, pixelY);
+                
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Draw energy bar
+            drawEnergyBar(x, y) {
+                let barWidth = CONFIG.GRID_SIZE - 4;
+                let barHeight = 3;
+                let energyPercentage = Math.max(0, this.energy / CONFIG.STARTING_ENERGY);
+                
+                // Background
+                ctx.fillStyle = '#333333';
+                ctx.globalAlpha = 0.8;
+                ctx.fillRect(x + 2, y - 6, barWidth, barHeight);
+                
+                // Energy fill
+                if (energyPercentage > 0.6) {
+                    ctx.fillStyle = '#00ff00';
+                } else if (energyPercentage > 0.3) {
+                    ctx.fillStyle = '#ffff00';
+                } else {
+                    ctx.fillStyle = '#ff0000';
+                }
+                
+                ctx.fillRect(x + 2, y - 6, barWidth * energyPercentage, barHeight);
+            }
+
+            // Draw ability indicators
+            drawAbilityIndicators(x, y) {
+                let indicatorSize = 3;
+                let offsetY = 0;
+                
+                if (this.specialAbilities.packHunting && this.type === 'HUNTER') {
+                    ctx.fillStyle = '#ff8800';
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillRect(x + CONFIG.GRID_SIZE - 5, y + offsetY, indicatorSize, indicatorSize);
+                    offsetY += 4;
+                }
+                
+                if (this.specialAbilities.speedBurst && this.abilityUses.speedBurst > 0) {
+                    ctx.fillStyle = '#ffff00';
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillRect(x + CONFIG.GRID_SIZE - 5, y + offsetY, indicatorSize, indicatorSize);
+                }
             }
 
             // NEW: Helper function to find direction away from a target (for anxiety)
@@ -1441,6 +1743,11 @@
                 // Lose energy over time
                 this.energy -= CONFIG.ENERGY_DECAY;
                 
+                // NEW: Ensure minimum energy loss for very low energy creatures (prevents getting stuck at near-zero)
+                if (this.energy < 5 && this.energy > 0) {
+                    this.energy -= 0.1; // Extra drain for very low energy creatures
+                }
+                
                 // Apply special ability effects
                 this.applyPassiveAbilities();
                 
@@ -1562,7 +1869,10 @@
             checkElimination() {
                 if (!this.isAlive) return;
                 
-                // Check energy death
+                // Keep energy within reasonable bounds FIRST
+                this.energy = Math.max(0, Math.min(CONFIG.STARTING_ENERGY * 1.5, this.energy));
+                
+                // Check energy death (now after bounds are enforced)
                 if (this.energy <= CONFIG.ENERGY_DEATH_THRESHOLD) {
                     this.eliminate('Energy Depleted');
                     return;
@@ -1574,8 +1884,11 @@
                     return;
                 }
                 
-                // Keep energy within reasonable bounds
-                this.energy = Math.max(0, Math.min(CONFIG.STARTING_ENERGY * 1.5, this.energy));
+                // NEW: Failsafe - eliminate creatures that haven't moved in an extremely long time
+                if (this.framesSinceLastMove > 500) {
+                    this.eliminate('Chronic Inactivity');
+                    return;
+                }
             }
 
             // NEW: Eliminate creature from simulation
@@ -1960,113 +2273,282 @@
             }
         }
 
-        // ===== FOOD SYSTEM FUNCTIONS =====
-        // Functions for managing food creation, consumption, and clustering
+        // ===== CONTINUOUS EVOLUTION SYSTEM =====
+        // Functions for managing respawning, breeding, and fitness-based selection
 
-        // Create food when a creature dies
-        function createFoodFromDeath(x, y) {
-            // Track death location for clustering
-            let locationKey = `${x},${y}`;
-            if (!deathMap.has(locationKey)) {
-                deathMap.set(locationKey, {
-                    count: 0,
-                    lastDeath: frameCount
-                });
-            }
+        // Select a parent brain based on fitness for breeding
+        function selectParentBrain(type) {
+            let history = type === 'HUNTER' ? fitnessHistory.hunters : fitnessHistory.prey;
             
-            let deathData = deathMap.get(locationKey);
-            deathData.count++;
-            deathData.lastDeath = frameCount;
-            
-            // Check for nearby deaths within cluster radius
-            let nearbyDeaths = 0;
-            for (let dx = -CONFIG.FOOD_CLUSTER_RADIUS; dx <= CONFIG.FOOD_CLUSTER_RADIUS; dx++) {
-                for (let dy = -CONFIG.FOOD_CLUSTER_RADIUS; dy <= CONFIG.FOOD_CLUSTER_RADIUS; dy++) {
-                    let nearKey = `${x + dx},${y + dy}`;
-                    if (deathMap.has(nearKey)) {
-                        let nearData = deathMap.get(nearKey);
-                        // Only count recent deaths (within last few frames)
-                        if (frameCount - nearData.lastDeath < CONFIG.FOOD_DECAY_FRAMES) {
-                            nearbyDeaths += nearData.count;
-                        }
-                    }
-                }
+            if (history.length === 0) {
+                return null; // No history, create random brain
             }
-            
-            // Create food cluster if enough deaths nearby
-            if (nearbyDeaths >= CONFIG.FOOD_CLUSTER_MIN_DEATHS) {
-                let clusterFoods = Food.createCluster(x, y, nearbyDeaths);
-                foods.push(...clusterFoods);
-                console.log(`Food cluster created at (${x},${y}) with ${nearbyDeaths} deaths`);
-            } else {
-                // Create single food item
-                foods.push(new Food(x, y));
-            }
-        }
-
-        // Update all food items
-        function updateFood() {
-            // Update existing food and remove expired items
-            foods = foods.filter(food => food.update());
-            
-            // Clean up old death data
-            for (let [key, data] of deathMap.entries()) {
-                if (frameCount - data.lastDeath > CONFIG.FOOD_DECAY_FRAMES * 2) {
-                    deathMap.delete(key);
-                }
-            }
-        }
-
-        // Check if creature can consume food at its location
-        function tryConsumeFood(creature) {
-            for (let i = foods.length - 1; i >= 0; i--) {
-                let food = foods[i];
-                if (food.x === creature.x && food.y === creature.y && food.canBeConsumed()) {
-                    let energyGained = food.consume();
-                    
-                    // Energy efficiency affects food consumption too
-                    if (creature.specialAbilities.energyEfficiency) {
-                        energyGained *= 1.3; // 30% more energy from food
-                    }
-                    
-                    // Energy vampire ability allows hunters to gain extra from food
-                    if (creature.specialAbilities.energyVampire && creature.type === 'HUNTER') {
-                        energyGained *= 1.2; // 20% bonus for vampiric hunters
-                    }
-                    
-                    // Anxiety makes creatures gain less from food (stress eating)
-                    if (creature.specialAbilities.anxiety) {
-                        energyGained *= 0.8; // 20% penalty due to stress
-                    }
-                    
-                    creature.energy = Math.min(CONFIG.MAX_ENERGY, creature.energy + energyGained);
-                    foods.splice(i, 1); // Remove consumed food
-                    console.log(`${creature.type} consumed food for ${energyGained.toFixed(1)} energy`);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // ===== GENETIC ALGORITHM FUNCTIONS =====
-        // These functions handle evolution between generations
-
-        // Create the next generation through evolution
-        function evolvePopulation() {
-            // Calculate fitness for all creatures
-            creatures.forEach(creature => creature.calculateFitness());
             
             // Sort by fitness (highest first)
-            creatures.sort((a, b) => b.fitness - a.fitness);
+            history.sort((a, b) => b.fitness - a.fitness);
             
-            // Update statistics
-            updateStats();
+            // Elite selection - top performers have higher chance
+            let eliteCount = Math.ceil(history.length * CONFIG.ELITE_THRESHOLD);
+            let selectedIndex = Math.floor(Math.random() * eliteCount);
             
-            // NEW: Count current population balance
-            let hunterCount = creatures.filter(c => c.type === 'HUNTER').length;
-            let preyCount = creatures.filter(c => c.type === 'PREY').length;
+            return history[selectedIndex].brain;
+        }
+
+        // Process respawn queue and create new creatures
+        function processRespawns() {
+            let hunterCount = creatures.filter(c => c.isAlive && c.type === 'HUNTER').length;
+            let preyCount = creatures.filter(c => c.isAlive && c.type === 'PREY').length;
             
-            console.log(`Pre-evolution: ${hunterCount} hunters, ${preyCount} prey`);
+            // Process ready respawns
+            for (let i = respawnQueue.length - 1; i >= 0; i--) {
+                let respawn = respawnQueue[i];
+                
+                if (frameCount >= respawn.respawnFrame) {
+                    // Check if we need this type
+                    let shouldSpawn = false;
+                    
+                    if (respawn.type === 'HUNTER' && hunterCount < CONFIG.MAX_HUNTERS) {
+                        shouldSpawn = true;
+                    } else if (respawn.type === 'PREY' && preyCount < CONFIG.MAX_PREY) {
+                        shouldSpawn = true;
+                    }
+                    
+                    if (shouldSpawn) {
+                        // Select parent brain for breeding
+                        let parentBrain = selectParentBrain(respawn.type);
+                        
+                        // Create new creature
+                        let newCreature = new Creature(null, null, respawn.type, parentBrain);
+                        
+                        // Random chance to gain special abilities
+                        if (Math.random() < CONFIG.MUTATION_ACTIVATION_RATE) {
+                            grantRandomAbility(newCreature);
+                        }
+                        
+                        creatures.push(newCreature);
+                        stats.totalRespawns++;
+                        
+                        if (respawn.type === 'HUNTER') hunterCount++;
+                        else preyCount++;
+                        
+                        console.log(`Respawned ${respawn.type} with fitness-based brain`);
+                    }
+                    
+                    // Remove from queue
+                    respawnQueue.splice(i, 1);
+                }
+            }
+        }
+
+        // Grant a random special ability to a creature
+        function grantRandomAbility(creature) {
+            let availableAbilities = [];
+            
+            if (creature.type === 'HUNTER') {
+                availableAbilities = ['packHunting', 'energyVampire', 'speedBurst'];
+            } else {
+                availableAbilities = ['evasion', 'energyEfficiency', 'camouflage'];
+            }
+            
+            // Add negative traits that can affect both
+            availableAbilities.push('lethargy', 'anxiety');
+            
+            // Filter out already-acquired abilities
+            availableAbilities = availableAbilities.filter(ability => !creature.specialAbilities[ability]);
+            
+            if (availableAbilities.length > 0) {
+                let chosenAbility = availableAbilities[Math.floor(Math.random() * availableAbilities.length)];
+                creature.specialAbilities[chosenAbility] = true;
+                console.log(`${creature.type} gained ${chosenAbility} ability!`);
+            }
+        }
+
+        // Initialize population with balanced hunters and prey
+        function initializePopulation() {
+            creatures = [];
+            
+            // Create initial hunters
+            for (let i = 0; i < CONFIG.MAX_HUNTERS; i++) {
+                let hunter = new Creature(null, null, 'HUNTER');
+                // Some start with basic abilities
+                if (Math.random() < 0.3) {
+                    grantRandomAbility(hunter);
+                }
+                creatures.push(hunter);
+            }
+            
+            // Create initial prey
+            for (let i = 0; i < CONFIG.MAX_PREY; i++) {
+                let prey = new Creature(null, null, 'PREY');
+                // Some start with basic abilities
+                if (Math.random() < 0.3) {
+                    grantRandomAbility(prey);
+                }
+                creatures.push(prey);
+            }
+            
+            console.log(`Initialized population: ${CONFIG.MAX_HUNTERS} hunters, ${CONFIG.MAX_PREY} prey`);
+        }
+
+        // Update statistics for display
+        function updateStats() {
+            let aliveCreatures = creatures.filter(c => c.isAlive);
+            let hunters = aliveCreatures.filter(c => c.type === 'HUNTER');
+            let prey = aliveCreatures.filter(c => c.type === 'PREY');
+            
+            stats.huntersAlive = hunters.length;
+            stats.preyAlive = prey.length;
+            
+            // Calculate average fitness
+            if (hunters.length > 0) {
+                stats.avgHunterFitness = hunters.reduce((sum, h) => {
+                    h.calculateFinalFitness();
+                    return sum + h.fitness;
+                }, 0) / hunters.length;
+                stats.bestHunterFitness = Math.max(...hunters.map(h => h.fitness));
+            }
+            
+            if (prey.length > 0) {
+                stats.avgPreyFitness = prey.reduce((sum, p) => {
+                    p.calculateFinalFitness();
+                    return sum + p.fitness;
+                }, 0) / prey.length;
+                stats.bestPreyFitness = Math.max(...prey.map(p => p.fitness));
+            }
+        }
+                    if (creature.specialAbilities.anxiety) {
+        }
+
+        // ===== GAME LOOP AND RENDERING =====
+        // Main simulation loop and drawing functions
+
+        // Main update function called every frame
+        function update() {
+            if (isPaused) return;
+            
+            frameCount++;
+            
+            // Apply simulation speed
+            for (let speed = 0; speed < simulationSpeed; speed++) {
+                // Update all living creatures
+                creatures.filter(c => c.isAlive).forEach(creature => {
+                    creature.think();
+                    creature.checkForTags();
+                });
+                
+                // Process respawns to maintain population
+                processRespawns();
+                
+                // Update statistics
+                if (frameCount % 30 === 0) { // Update stats every 30 frames
+                    updateStats();
+                }
+            }
+        }
+
+        // Draw everything on the canvas
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+            
+            // Draw walls
+            walls.forEach(wall => wall.draw());
+            
+            // Draw creatures
+            creatures.filter(c => c.isAlive).forEach(creature => creature.draw());
+            
+            // Draw UI
+            drawUI();
+        }
+
+        // Draw user interface
+        function drawUI() {
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '16px Arial';
+            ctx.globalAlpha = 0.8;
+            
+            let y = 30;
+            let lineHeight = 25;
+            
+            // Population counts
+            ctx.fillText(`Hunters: ${stats.huntersAlive}/${CONFIG.MAX_HUNTERS}`, 20, y);
+            y += lineHeight;
+            ctx.fillText(`Prey: ${stats.preyAlive}/${CONFIG.MAX_PREY}`, 20, y);
+            y += lineHeight;
+            
+            // Performance stats
+            ctx.fillText(`Total Tags: ${stats.totalTags}`, 20, y);
+            y += lineHeight;
+            ctx.fillText(`Total Respawns: ${stats.totalRespawns}`, 20, y);
+            y += lineHeight;
+            
+            // Fitness stats
+            ctx.fillText(`Avg Hunter Fitness: ${stats.avgHunterFitness.toFixed(1)}`, 20, y);
+            y += lineHeight;
+            ctx.fillText(`Best Hunter: ${stats.bestHunterFitness.toFixed(1)}`, 20, y);
+            y += lineHeight;
+            ctx.fillText(`Avg Prey Fitness: ${stats.avgPreyFitness.toFixed(1)}`, 20, y);
+            y += lineHeight;
+            ctx.fillText(`Best Prey: ${stats.bestPreyFitness.toFixed(1)}`, 20, y);
+            y += lineHeight;
+            
+            // Speed indicator
+            ctx.fillText(`Speed: ${simulationSpeed.toFixed(1)}x`, 20, y);
+            y += lineHeight;
+            
+            // Controls
+            ctx.font = '12px Arial';
+            ctx.fillText('Controls: SPACE=Pause, R=Reset, Arrow Keys=Speed', 20, CONFIG.CANVAS_HEIGHT - 40);
+            
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Create speed control slider
+        function createSpeedControl() {
+            // Create slider container
+            let sliderContainer = document.createElement('div');
+            sliderContainer.style.position = 'fixed';
+            sliderContainer.style.top = '20px';
+            sliderContainer.style.right = '20px';
+            sliderContainer.style.background = 'rgba(0,0,0,0.7)';
+            sliderContainer.style.padding = '10px';
+            sliderContainer.style.borderRadius = '5px';
+            sliderContainer.style.color = 'white';
+            sliderContainer.style.fontFamily = 'Arial';
+            sliderContainer.style.fontSize = '14px';
+            sliderContainer.style.zIndex = '1000';
+            
+            // Create label
+            let label = document.createElement('div');
+            label.textContent = 'Simulation Speed';
+            label.style.marginBottom = '5px';
+            
+            // Create slider
+            let slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = CONFIG.MIN_SIMULATION_SPEED;
+            slider.max = CONFIG.MAX_SIMULATION_SPEED;
+            slider.step = 0.1;
+            slider.value = CONFIG.DEFAULT_SIMULATION_SPEED;
+            slider.style.width = '150px';
+            
+            // Create value display
+            let valueDisplay = document.createElement('span');
+            valueDisplay.textContent = `${CONFIG.DEFAULT_SIMULATION_SPEED.toFixed(1)}x`;
+            valueDisplay.style.marginLeft = '10px';
+            
+            // Update speed when slider changes
+            slider.addEventListener('input', function() {
+                simulationSpeed = parseFloat(this.value);
+                valueDisplay.textContent = `${simulationSpeed.toFixed(1)}x`;
+            });
+            
+            sliderContainer.appendChild(label);
+            sliderContainer.appendChild(slider);
+            sliderContainer.appendChild(valueDisplay);
+            document.body.appendChild(sliderContainer);
+        }
             
             let newPopulation = [];
             let eliteCount = Math.floor(CONFIG.POPULATION_SIZE * CONFIG.ELITE_PERCENTAGE);
@@ -2135,20 +2617,127 @@
             }
             
             // Replace old population
-            creatures = newPopulation;
-            generation++;
-            frameCount = 0;
-            stats.tags = 0;
+        // ===== INITIALIZATION AND EVENT HANDLERS =====
+        
+        // Initialize the simulation
+        function init() {
+            // Get canvas
+            canvas = document.getElementById('gameCanvas');
+            if (!canvas) {
+                canvas = document.createElement('canvas');
+                canvas.id = 'gameCanvas';
+                canvas.width = CONFIG.CANVAS_WIDTH;
+                canvas.height = CONFIG.CANVAS_HEIGHT;
+                canvas.style.display = 'block';
+                canvas.style.background = '#1a1a1a';
+                document.body.appendChild(canvas);
+            }
             
-            // Reset simulation timer
-            simulationStartTime = Date.now();
-            simulationPausedTime = 0;
+            ctx = canvas.getContext('2d');
             
-            // Verify final balance
-            let finalHunters = creatures.filter(c => c.type === 'HUNTER').length;
-            let finalPrey = creatures.filter(c => c.type === 'PREY').length;
-            console.log(`Generation ${generation} - Hunters: ${finalHunters}, Prey: ${finalPrey}, Best Fitness: ${stats.bestFitness.toFixed(2)}`);
+            // Generate walls
+            generateWalls();
+            
+            // Initialize population
+            initializePopulation();
+            
+            // Create speed control
+            createSpeedControl();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            console.log('Continuous evolution simulation initialized!');
         }
+
+        // Generate random walls
+        function generateWalls() {
+            walls = [];
+            let gridWidth = CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE;
+            let gridHeight = CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE;
+            let wallCount = Math.floor(gridWidth * gridHeight * CONFIG.WALL_DENSITY);
+            
+            for (let i = 0; i < wallCount; i++) {
+                let x = Math.floor(Math.random() * gridWidth);
+                let y = Math.floor(Math.random() * gridHeight);
+                
+                // Don't place walls on edges (leave escape routes)
+                if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
+                    walls.push(new Wall(x, y));
+                }
+            }
+        }
+
+        // Set up keyboard controls
+        function setupEventListeners() {
+            document.addEventListener('keydown', function(event) {
+                switch(event.code) {
+                    case 'Space':
+                        event.preventDefault();
+                        isPaused = !isPaused;
+                        console.log(isPaused ? 'Paused' : 'Resumed');
+                        break;
+                    case 'KeyR':
+                        resetSimulation();
+                        break;
+                    case 'ArrowUp':
+                        event.preventDefault();
+                        simulationSpeed = Math.min(CONFIG.MAX_SIMULATION_SPEED, simulationSpeed + 0.5);
+                        break;
+                    case 'ArrowDown':
+                        event.preventDefault();
+                        simulationSpeed = Math.max(CONFIG.MIN_SIMULATION_SPEED, simulationSpeed - 0.5);
+                        break;
+                }
+            });
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                CONFIG.CANVAS_WIDTH = window.innerWidth;
+                CONFIG.CANVAS_HEIGHT = window.innerHeight;
+                canvas.width = CONFIG.CANVAS_WIDTH;
+                canvas.height = CONFIG.CANVAS_HEIGHT;
+            });
+        }
+
+        // Reset the simulation
+        function resetSimulation() {
+            frameCount = 0;
+            creatures = [];
+            respawnQueue = [];
+            fitnessHistory = { hunters: [], prey: [] };
+            totalCreaturesSpawned = 0;
+            stats = {
+                huntersAlive: 0,
+                preyAlive: 0,
+                totalTags: 0,
+                avgHunterFitness: 0,
+                avgPreyFitness: 0,
+                bestHunterFitness: 0,
+                bestPreyFitness: 0,
+                totalRespawns: 0
+            };
+            
+            generateWalls();
+            initializePopulation();
+            console.log('Simulation reset!');
+        }
+
+        // Main game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the simulation when page loads
+        window.addEventListener('load', function() {
+            init();
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
 
         // Tournament selection - pick the best from a random group
         function tournamentSelection() {
