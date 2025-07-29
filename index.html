@@ -660,6 +660,263 @@
             }
         }
 
+        // ===== NEURAL NETWORK ANALYSIS FUNCTIONS =====
+        
+        // ANALYZE NETWORK POPULATIONS - Calculate statistics for all living creatures
+        function analyzeNetworkPopulations() {
+            let hunters = creatures.filter(c => c.isAlive && c.type === 'HUNTER');
+            let prey = creatures.filter(c => c.isAlive && c.type === 'PREY');
+            
+            if (hunters.length > 0) {
+                deepNeatStats.avgLayers.hunters = hunters.reduce((sum, h) => sum + h.brain.hiddenLayers.length, 0) / hunters.length;
+                deepNeatStats.avgNodesPerLayer.hunters = hunters.reduce((sum, h) => {
+                    return sum + (h.brain.hiddenLayers.reduce((nodeSum, nodes) => nodeSum + nodes, 0) / h.brain.hiddenLayers.length);
+                }, 0) / hunters.length;
+                deepNeatStats.avgComplexity.hunters = hunters.reduce((sum, h) => sum + h.brain.complexity, 0) / hunters.length;
+            }
+            
+            if (prey.length > 0) {
+                deepNeatStats.avgLayers.prey = prey.reduce((sum, p) => sum + p.brain.hiddenLayers.length, 0) / prey.length;
+                deepNeatStats.avgNodesPerLayer.prey = prey.reduce((sum, p) => {
+                    return sum + (p.brain.hiddenLayers.reduce((nodeSum, nodes) => nodeSum + nodes, 0) / p.brain.hiddenLayers.length);
+                }, 0) / prey.length;
+                deepNeatStats.avgComplexity.prey = prey.reduce((sum, p) => sum + p.brain.complexity, 0) / prey.length;
+            }
+        }
+
+        // DRAW NEURAL NETWORK VISUALIZATION - Visual representation of creature's brain
+        function drawNeuralNetwork(creature, x, y, width, height) {
+            if (!creature || !creature.brain) return;
+            
+            ctx.save();
+            
+            // Background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeStyle = '#fff';
+            ctx.strokeRect(x, y, width, height);
+            
+            // Title
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.fillText(`${creature.type} Neural Network (ID: ${creature.id})`, x + 5, y + 15);
+            ctx.fillText(`Layers: ${creature.brain.hiddenLayers.join('-')} | Complexity: ${creature.brain.complexity}`, x + 5, y + 30);
+            
+            let brain = creature.brain;
+            let layers = [CONFIG.INPUT_NODES, ...brain.hiddenLayers, CONFIG.OUTPUT_NODES];
+            let layerWidth = (width - 40) / layers.length;
+            let maxNodes = Math.max(...layers);
+            
+            // Draw nodes and connections
+            for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
+                let layerX = x + 20 + layerIndex * layerWidth;
+                let nodesInLayer = layers[layerIndex];
+                let nodeSpacing = (height - 80) / Math.max(1, nodesInLayer - 1);
+                
+                // Draw nodes
+                for (let nodeIndex = 0; nodeIndex < nodesInLayer; nodeIndex++) {
+                    let nodeY = y + 50 + nodeIndex * nodeSpacing;
+                    
+                    // Color coding
+                    if (layerIndex === 0) {
+                        ctx.fillStyle = '#4CAF50'; // Input nodes - green
+                    } else if (layerIndex === layers.length - 1) {
+                        ctx.fillStyle = '#F44336'; // Output nodes - red
+                    } else {
+                        ctx.fillStyle = '#2196F3'; // Hidden nodes - blue
+                    }
+                    
+                    ctx.beginPath();
+                    ctx.arc(layerX, nodeY, 8, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // Draw connections to next layer
+                    if (layerIndex < layers.length - 1) {
+                        let nextLayerX = x + 20 + (layerIndex + 1) * layerWidth;
+                        let nextLayerNodes = layers[layerIndex + 1];
+                        let nextNodeSpacing = (height - 80) / Math.max(1, nextLayerNodes - 1);
+                        
+                        for (let nextNodeIndex = 0; nextNodeIndex < nextLayerNodes; nextNodeIndex++) {
+                            let nextNodeY = y + 50 + nextNodeIndex * nextNodeSpacing;
+                            
+                            // Get weight value for line thickness/color
+                            let weight = 0;
+                            if (brain.weights[layerIndex] && brain.weights[layerIndex][nodeIndex]) {
+                                weight = brain.weights[layerIndex][nodeIndex][nextNodeIndex] || 0;
+                            }
+                            
+                            // Line style based on weight
+                            ctx.strokeStyle = weight > 0 ? `rgba(0, 255, 0, ${Math.abs(weight)})` : `rgba(255, 0, 0, ${Math.abs(weight)})`;
+                            ctx.lineWidth = Math.abs(weight) * 2;
+                            
+                            ctx.beginPath();
+                            ctx.moveTo(layerX, nodeY);
+                            ctx.lineTo(nextLayerX, nextNodeY);
+                            ctx.stroke();
+                        }
+                    }
+                }
+                
+                // Layer labels
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                let labelY = y + height - 10;
+                if (layerIndex === 0) {
+                    ctx.fillText('Input', layerX - 15, labelY);
+                } else if (layerIndex === layers.length - 1) {
+                    ctx.fillText('Output', layerX - 15, labelY);
+                } else {
+                    ctx.fillText(`H${layerIndex}`, layerX - 8, labelY);
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        // DRAW COMPLEXITY EVOLUTION GRAPH - Show how network complexity changes over time
+        function drawComplexityGraph(x, y, width, height) {
+            ctx.save();
+            
+            // Background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeStyle = '#fff';
+            ctx.strokeRect(x, y, width, height);
+            
+            // Title
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.fillText('Network Complexity Evolution', x + 5, y + 15);
+            
+            // Basic complexity indicators
+            ctx.fillText(`Unique Architectures: ${deepNeatStats.uniqueArchitectures.size}`, x + 5, y + 35);
+            ctx.fillText(`Layers Added: ${deepNeatStats.layersAdded} | Removed: ${deepNeatStats.layersRemoved}`, x + 5, y + 50);
+            ctx.fillText(`Nodes Added: ${deepNeatStats.nodesAdded} | Removed: ${deepNeatStats.nodesRemoved}`, x + 5, y + 65);
+            
+            ctx.restore();
+        }
+
+        // ===== DATA EXPORT AND ANALYSIS FUNCTIONS =====
+        
+        // EXPORT PERFORMANCE DATA - Generate JSON data for analysis
+        function exportPerformanceData() {
+            let performanceData = {
+                timestamp: new Date().toISOString(),
+                frameCount: frameCount,
+                simulationSpeed: simulationSpeed,
+                
+                // Population stats
+                population: {
+                    hunters: creatures.filter(c => c.isAlive && c.type === 'HUNTER').length,
+                    prey: creatures.filter(c => c.isAlive && c.type === 'PREY').length,
+                    totalRespawns: stats.totalRespawns
+                },
+                
+                // Fitness statistics
+                fitness: {
+                    avgHunterFitness: stats.avgHunterFitness,
+                    avgPreyFitness: stats.avgPreyFitness,
+                    bestHunterFitness: stats.bestHunterFitness,
+                    bestPreyFitness: stats.bestPreyFitness
+                },
+                
+                // Deep NEAT architecture statistics
+                architecture: {
+                    avgLayers: { ...deepNeatStats.avgLayers },
+                    avgNodesPerLayer: { ...deepNeatStats.avgNodesPerLayer },
+                    avgComplexity: { ...deepNeatStats.avgComplexity },
+                    uniqueArchitectures: deepNeatStats.uniqueArchitectures.size,
+                    topologyEvolution: {
+                        layersAdded: deepNeatStats.layersAdded,
+                        layersRemoved: deepNeatStats.layersRemoved,
+                        nodesAdded: deepNeatStats.nodesAdded,
+                        nodesRemoved: deepNeatStats.nodesRemoved
+                    },
+                    extremes: {
+                        mostComplex: { ...deepNeatStats.mostComplexNetwork },
+                        simplest: { ...deepNeatStats.simplestNetwork }
+                    }
+                },
+                
+                // Individual creature data
+                creatures: creatures.filter(c => c.isAlive).map(c => ({
+                    id: c.id,
+                    type: c.type,
+                    fitness: c.fitness,
+                    energy: c.energy,
+                    lifetimeFrames: c.lifetimeFrames,
+                    totalTags: c.totalTags,
+                    architecture: {
+                        layers: c.brain.hiddenLayers.length,
+                        structure: [...c.brain.hiddenLayers],
+                        complexity: c.brain.complexity
+                    },
+                    abilities: { ...c.specialAbilities }
+                }))
+            };
+            
+            // Create downloadable file
+            let dataStr = JSON.stringify(performanceData, null, 2);
+            let dataBlob = new Blob([dataStr], {type: 'application/json'});
+            let url = URL.createObjectURL(dataBlob);
+            
+            let link = document.createElement('a');
+            link.href = url;
+            link.download = `neat-evolution-data-${frameCount}.json`;
+            link.click();
+            
+            console.log('Performance data exported!', performanceData);
+        }
+
+        // PRINT DETAILED ANALYSIS - Console output for debugging
+        function printDetailedAnalysis() {
+            console.log('=== DEEP NEAT EVOLUTION ANALYSIS ===');
+            console.log(`Frame: ${frameCount} | Speed: ${simulationSpeed}x`);
+            console.log('');
+            
+            console.log('POPULATION:');
+            console.log(`  Hunters: ${stats.huntersAlive}/${CONFIG.MAX_HUNTERS}`);
+            console.log(`  Prey: ${stats.preyAlive}/${CONFIG.MAX_PREY}`);
+            console.log(`  Total Respawns: ${stats.totalRespawns}`);
+            console.log('');
+            
+            console.log('FITNESS EVOLUTION:');
+            console.log(`  Hunter Avg: ${stats.avgHunterFitness.toFixed(2)} | Best: ${stats.bestHunterFitness.toFixed(2)}`);
+            console.log(`  Prey Avg: ${stats.avgPreyFitness.toFixed(2)} | Best: ${stats.bestPreyFitness.toFixed(2)}`);
+            console.log('');
+            
+            console.log('NEURAL ARCHITECTURE EVOLUTION:');
+            console.log(`  Hunter Avg Layers: ${deepNeatStats.avgLayers.hunters.toFixed(2)}`);
+            console.log(`  Prey Avg Layers: ${deepNeatStats.avgLayers.prey.toFixed(2)}`);
+            console.log(`  Hunter Avg Complexity: ${deepNeatStats.avgComplexity.hunters.toFixed(2)}`);
+            console.log(`  Prey Avg Complexity: ${deepNeatStats.avgComplexity.prey.toFixed(2)}`);
+            console.log(`  Unique Architectures: ${deepNeatStats.uniqueArchitectures.size}`);
+            console.log('');
+            
+            console.log('TOPOLOGY MUTATIONS:');
+            console.log(`  Layers Added: ${deepNeatStats.layersAdded} | Removed: ${deepNeatStats.layersRemoved}`);
+            console.log(`  Nodes Added: ${deepNeatStats.nodesAdded} | Removed: ${deepNeatStats.nodesRemoved}`);
+            console.log('');
+            
+            console.log('ARCHITECTURE EXTREMES:');
+            console.log(`  Most Complex: ${deepNeatStats.mostComplexNetwork.layers} layers, ${deepNeatStats.mostComplexNetwork.nodes} nodes, complexity ${deepNeatStats.mostComplexNetwork.complexity}`);
+            console.log(`  Simplest: ${deepNeatStats.simplestNetwork.layers} layers, ${deepNeatStats.simplestNetwork.nodes} nodes, complexity ${deepNeatStats.simplestNetwork.complexity}`);
+            console.log('');
+            
+            if (selectedCreature && selectedCreature.isAlive) {
+                console.log('SELECTED CREATURE:');
+                console.log(`  Type: ${selectedCreature.type} | ID: ${selectedCreature.id}`);
+                console.log(`  Fitness: ${selectedCreature.fitness.toFixed(2)} | Energy: ${selectedCreature.energy.toFixed(2)}`);
+                console.log(`  Lifetime: ${selectedCreature.lifetimeFrames} frames`);
+                console.log(`  Neural Structure: [${selectedCreature.brain.hiddenLayers.join('-')}]`);
+                console.log(`  Complexity: ${selectedCreature.brain.complexity}`);
+                console.log(`  Special Abilities:`, Object.entries(selectedCreature.specialAbilities).filter(([key, value]) => value).map(([key]) => key));
+            }
+            
+            console.log('==========================================');
+        }
+
         // ===== WALL CLASS =====
         // Represents dangerous obstacles that drain energy when touched
         // Walls create environmental pressure and navigation challenges
@@ -1388,6 +1645,7 @@
                 
                 if (frameCount % 30 === 0) {
                     updateStats();
+                    analyzeNetworkPopulations(); // Update neural network statistics
                 }
             }
         }
@@ -1400,6 +1658,16 @@
             creatures.filter(c => c.isAlive).forEach(creature => creature.draw());
             
             drawUI();
+            
+            // Draw neural network visualization if enabled
+            if (showNeuralNetworks && selectedCreature && selectedCreature.isAlive) {
+                drawNeuralNetwork(selectedCreature, CONFIG.CANVAS_WIDTH - 400, 100, 380, 300);
+            }
+            
+            // Draw complexity graph if enabled
+            if (showComplexityGraph) {
+                drawComplexityGraph(CONFIG.CANVAS_WIDTH - 400, 420, 380, 200);
+            }
         }
 
         function drawUI() {
@@ -1410,6 +1678,7 @@
             let y = 30;
             let lineHeight = 25;
             
+            // Basic stats
             ctx.fillText(`Hunters: ${stats.huntersAlive}/${CONFIG.MAX_HUNTERS}`, 20, y);
             y += lineHeight;
             ctx.fillText(`Prey: ${stats.preyAlive}/${CONFIG.MAX_PREY}`, 20, y);
@@ -1426,10 +1695,43 @@
             y += lineHeight;
             ctx.fillText(`Best Prey: ${stats.bestPreyFitness.toFixed(1)}`, 20, y);
             y += lineHeight;
-            ctx.fillText(`Speed: ${simulationSpeed.toFixed(1)}x`, 20, y);
+            ctx.fillText(`Speed: ${simulationSpeed.toFixed(2)}x`, 20, y);
             
+            // Deep NEAT detailed stats (if enabled)
+            if (showDetailedStats) {
+                y += lineHeight;
+                ctx.font = '14px Arial';
+                ctx.fillText('=== DEEP NEAT STATS ===', 20, y);
+                y += lineHeight * 0.8;
+                
+                ctx.fillText(`Hunter Avg Layers: ${deepNeatStats.avgLayers.hunters.toFixed(1)}`, 20, y);
+                y += lineHeight * 0.8;
+                ctx.fillText(`Prey Avg Layers: ${deepNeatStats.avgLayers.prey.toFixed(1)}`, 20, y);
+                y += lineHeight * 0.8;
+                ctx.fillText(`Hunter Avg Complexity: ${deepNeatStats.avgComplexity.hunters.toFixed(1)}`, 20, y);
+                y += lineHeight * 0.8;
+                ctx.fillText(`Prey Avg Complexity: ${deepNeatStats.avgComplexity.prey.toFixed(1)}`, 20, y);
+                y += lineHeight * 0.8;
+                ctx.fillText(`Unique Architectures: ${deepNeatStats.uniqueArchitectures.size}`, 20, y);
+                y += lineHeight * 0.8;
+                ctx.fillText(`Topology Changes: +${deepNeatStats.layersAdded}L -${deepNeatStats.layersRemoved}L +${deepNeatStats.nodesAdded}N -${deepNeatStats.nodesRemoved}N`, 20, y);
+                
+                // Selected creature info
+                if (selectedCreature && selectedCreature.isAlive) {
+                    y += lineHeight;
+                    ctx.fillText(`Selected: ${selectedCreature.type} ID:${selectedCreature.id}`, 20, y);
+                    y += lineHeight * 0.8;
+                    ctx.fillText(`Structure: [${selectedCreature.brain.hiddenLayers.join('-')}] Complexity: ${selectedCreature.brain.complexity}`, 20, y);
+                }
+            }
+            
+            // Controls
             ctx.font = '12px Arial';
-            ctx.fillText('Controls: SPACE=Pause, R=Reset, Arrow Keys=Speed', 20, CONFIG.CANVAS_HEIGHT - 40);
+            let controlsY = CONFIG.CANVAS_HEIGHT - 60;
+            ctx.fillText('Controls: SPACE=Pause, R=Reset, ↑↓=Speed, N=Neural Viz, C=Complexity, D=Details, S=Select, E=Export, P=Print', 20, controlsY);
+            ctx.fillText(`Frame: ${frameCount} | Toggle viz: N(${showNeuralNetworks?'ON':'OFF'}) C(${showComplexityGraph?'ON':'OFF'}) D(${showDetailedStats?'ON':'OFF'})`, 20, controlsY + 15);
+            
+            ctx.globalAlpha = 1.0;
             
             ctx.globalAlpha = 1.0;
         }
@@ -1525,11 +1827,44 @@
                         break;
                     case 'ArrowUp':
                         event.preventDefault();
-                        simulationSpeed = Math.min(CONFIG.MAX_SIMULATION_SPEED, simulationSpeed + 0.5);
+                        simulationSpeed = Math.min(CONFIG.MAX_SIMULATION_SPEED, simulationSpeed + CONFIG.SPEED_CHANGE_STEP);
+                        console.log(`Speed: ${simulationSpeed.toFixed(2)}x`);
                         break;
                     case 'ArrowDown':
                         event.preventDefault();
-                        simulationSpeed = Math.max(CONFIG.MIN_SIMULATION_SPEED, simulationSpeed - 0.5);
+                        simulationSpeed = Math.max(CONFIG.MIN_SIMULATION_SPEED, simulationSpeed - CONFIG.SPEED_CHANGE_STEP);
+                        console.log(`Speed: ${simulationSpeed.toFixed(2)}x`);
+                        break;
+                    case 'KeyN':
+                        // Toggle neural network visualization
+                        showNeuralNetworks = !showNeuralNetworks;
+                        console.log(`Neural Network Visualization: ${showNeuralNetworks ? 'ON' : 'OFF'}`);
+                        break;
+                    case 'KeyC':
+                        // Toggle complexity graph
+                        showComplexityGraph = !showComplexityGraph;
+                        console.log(`Complexity Graph: ${showComplexityGraph ? 'ON' : 'OFF'}`);
+                        break;
+                    case 'KeyD':
+                        // Toggle detailed stats
+                        showDetailedStats = !showDetailedStats;
+                        console.log(`Detailed Stats: ${showDetailedStats ? 'ON' : 'OFF'}`);
+                        break;
+                    case 'KeyS':
+                        // Select random creature for neural network visualization
+                        let aliveCreatures = creatures.filter(c => c.isAlive);
+                        if (aliveCreatures.length > 0) {
+                            selectedCreature = aliveCreatures[Math.floor(Math.random() * aliveCreatures.length)];
+                            console.log(`Selected ${selectedCreature.type} (ID: ${selectedCreature.id}) for visualization`);
+                        }
+                        break;
+                    case 'KeyE':
+                        // Export performance data
+                        exportPerformanceData();
+                        break;
+                    case 'KeyP':
+                        // Print current stats to console
+                        printDetailedAnalysis();
                         break;
                 }
             });
