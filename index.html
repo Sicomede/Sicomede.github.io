@@ -380,6 +380,7 @@
                 <div>Alive: <span id="aliveCount">0</span> | Eliminated: <span id="eliminatedCount">0</span></div>
                 <div>Best Fitness: <span id="bestFitness">0</span></div>
                 <div>Active Abilities: <span id="abilityCount">0</span></div>
+                <div>Food Available: <span id="foodCount">0</span></div>
                 <div>Neural Diversity: <span id="neuralDiversity">0</span> types</div>
                 <div>Topology Changes: <span id="topologyChanges">0</span></div>
             </div>
@@ -443,7 +444,7 @@
                     <strong>Paranoia:</strong> Random direction changes, wastes energy
                 </div>
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
-                    <strong>Lethargy:</strong> Slower movement, higher energy costs
+                    <strong>Lethargy:</strong> Progressive movement slowdown - gets worse without movement, increased energy drain, eventual complete inactivity
                 </div>
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
                     <strong>Confusion:</strong> Sometimes moves in wrong direction
@@ -562,6 +563,16 @@
             WALL_DENSITY: 0.05,         // Percentage of grid filled with deadly walls
             WALL_KILL_ENERGY: 50,       // Energy lost when touching walls
             
+            // NEW: Food system
+            FOOD_ENERGY_VALUE: 30,      // Energy gained from eating food
+            FOOD_DECAY_RATE: 0.1,       // How fast food decays over time
+            FOOD_MAX_AGE: 1000,         // Maximum frames before food expires
+            FOOD_CLUSTER_RADIUS: 3,     // Distance to consider for food clustering
+            FOOD_CLUSTER_MIN_DEATHS: 2, // Minimum deaths needed to create cluster
+            FOOD_CLUSTER_BONUS: 1.5,    // Multiplier for food value in clusters
+            FOOD_DECAY_FRAMES: 300,     // Frames to remember death locations
+            DEATH_TO_FOOD_CHANCE: 0.8,  // Chance that death creates food
+            
             // Evolution timing
             GENERATION_LENGTH: 3000,    // Frames before evolution (longer for new mechanics)
             
@@ -593,6 +604,7 @@
         let canvas, ctx;
         let creatures = [];
         let walls = [];
+        let foods = [];
         let generation = 1;
         let frameCount = 0;
         let isPaused = false;
@@ -604,6 +616,9 @@
             aliveCount: 0,
             eliminatedCount: 0
         };
+        
+        // Food system tracking
+        let deathMap = new Map(); // Track deaths by location for clustering
         
         // NEW: Turbo evolution mode
         let turboModeActive = false;
@@ -965,6 +980,98 @@
             }
         }
 
+        // ===== FOOD CLASS =====
+        // Represents food sources created from dead creatures
+        class Food {
+            constructor(x, y, energy = CONFIG.FOOD_ENERGY_VALUE) {
+                this.x = x;
+                this.y = y;
+                this.energy = energy;
+                this.type = 'FOOD';
+                this.age = 0;
+                this.maxAge = CONFIG.FOOD_MAX_AGE;
+                this.decayRate = CONFIG.FOOD_DECAY_RATE;
+            }
+
+            // Update food state (decay over time)
+            update() {
+                this.age++;
+                // Decay energy over time
+                this.energy = Math.max(0, this.energy - this.decayRate);
+                
+                // Check if food has expired
+                return this.age < this.maxAge && this.energy > 0;
+            }
+
+            // Draw the food
+            draw() {
+                let pixelX = this.x * CONFIG.GRID_SIZE;
+                let pixelY = this.y * CONFIG.GRID_SIZE;
+                
+                // Food size based on energy content
+                let energyRatio = this.energy / CONFIG.FOOD_ENERGY_VALUE;
+                let size = Math.max(4, CONFIG.GRID_SIZE * 0.8 * energyRatio);
+                let offset = (CONFIG.GRID_SIZE - size) / 2;
+                
+                // Green color with alpha based on energy
+                ctx.fillStyle = `rgba(0, 255, 0, ${0.3 + 0.7 * energyRatio})`;
+                ctx.fillRect(pixelX + offset, pixelY + offset, size, size);
+                
+                // Add sparkle effect for fresh food
+                if (this.age < CONFIG.FOOD_MAX_AGE * 0.3) {
+                    ctx.fillStyle = '#ffffff';
+                    let sparkleSize = 2;
+                    ctx.fillRect(pixelX + offset + size/4, pixelY + offset + size/4, sparkleSize, sparkleSize);
+                    ctx.fillRect(pixelX + offset + 3*size/4, pixelY + offset + 3*size/4, sparkleSize, sparkleSize);
+                }
+            }
+
+            // Check if creature can consume this food
+            canBeConsumed() {
+                return this.energy > 0;
+            }
+
+            // Consume food and return energy gained
+            consume() {
+                let energyGained = this.energy;
+                this.energy = 0;
+                return energyGained;
+            }
+
+            // Create food cluster when multiple deaths occur nearby
+            static createCluster(x, y, deathCount) {
+                let foods = [];
+                let clusterEnergy = CONFIG.FOOD_ENERGY_VALUE + (deathCount - 1) * CONFIG.FOOD_CLUSTER_BONUS;
+                
+                // Create central food source
+                foods.push(new Food(x, y, clusterEnergy));
+                
+                // Add smaller food sources around the cluster
+                if (deathCount >= CONFIG.FOOD_CLUSTER_MIN_DEATHS) {
+                    let directions = [
+                        {dx: -1, dy: 0}, {dx: 1, dy: 0},
+                        {dx: 0, dy: -1}, {dx: 0, dy: 1},
+                        {dx: -1, dy: -1}, {dx: 1, dy: 1},
+                        {dx: -1, dy: 1}, {dx: 1, dy: -1}
+                    ];
+                    
+                    for (let i = 0; i < Math.min(deathCount - 1, 4); i++) {
+                        let dir = directions[i % directions.length];
+                        let newX = x + dir.dx;
+                        let newY = y + dir.dy;
+                        
+                        // Check bounds
+                        if (newX >= 1 && newX < CONFIG.GRID_WIDTH - 1 && 
+                            newY >= 1 && newY < CONFIG.GRID_HEIGHT - 1) {
+                            foods.push(new Food(newX, newY, CONFIG.FOOD_ENERGY_VALUE * 0.7));
+                        }
+                    }
+                }
+                
+                return foods;
+            }
+        }
+
         // ===== CREATURE CLASS =====
         // Represents individual creatures in the simulation
         class Creature {
@@ -1019,6 +1126,8 @@
                 
                 // Movement and behavior
                 this.lastMove = { x: 0, y: 0 }; // Track movement for fitness
+                this.lastPosition = { x: this.x, y: this.y }; // Track previous position
+                this.framesSinceLastMove = 0;   // Track how long since last movement
                 this.tags = 0;                  // Number of successful tags
                 this.timeAlive = 0;             // Survival time
                 this.timeSinceLastTag = 0;      // Used for fitness calculation
@@ -1176,6 +1285,21 @@
                     chosenDirection = Math.floor(Math.random() * 4);
                 }
                 
+                // NEW: Progressive lethargy affects decision making
+                if (this.specialAbilities.lethargy) {
+                    // The longer without movement, the higher chance of not moving at all
+                    let inactivityChance = Math.min(0.1 + (this.framesSinceLastMove * 0.005), 0.8); // Up to 80% chance
+                    if (Math.random() < inactivityChance) {
+                        return; // Skip movement entirely due to lethargy
+                    }
+                    
+                    // Also chance to move slower by reducing chosen direction intensity
+                    if (Math.random() < 0.3 + (this.framesSinceLastMove * 0.002)) {
+                        // Sometimes just don't move even when trying to
+                        return;
+                    }
+                }
+                
                 // Move based on the neural network's decision (potentially modified)
                 this.move(chosenDirection);
             }
@@ -1189,11 +1313,13 @@
                 
                 // Apply speed burst ability
                 let moveDistance = 1;
+                let usedSpeedBurst = false;
                 if (this.specialAbilities.speedBurst && 
                     this.energy < CONFIG.STARTING_ENERGY * 0.3 && 
                     this.specialAbilityUses.speedBurst > 0 &&
                     this.abilityCountdown.speedBurst === 0) {
                     moveDistance = 2;
+                    usedSpeedBurst = true;
                     this.specialAbilityUses.speedBurst--;
                     this.abilityCountdown.speedBurst = 30; // Cooldown
                     console.log(`${this.type} used speed burst!`);
@@ -1209,23 +1335,44 @@
                 
                 // Check if the new position is safe
                 if (this.isPositionSafe(newX, newY)) {
+                    // Check if creature actually moved to a different position
+                    let actuallyMoved = (this.x !== newX || this.y !== newY);
+                    
                     this.lastMove.x = newX - this.x;
                     this.lastMove.y = newY - this.y;
                     this.x = newX;
                     this.y = newY;
                     
-                    // Calculate energy cost
+                    // Update movement tracking for lethargy system
+                    if (actuallyMoved) {
+                        this.framesSinceLastMove = 0; // Reset stagnation counter
+                        // Speed burst provides extra anti-lethargy benefit
+                        if (usedSpeedBurst) {
+                            this.framesSinceLastMove = -30; // Negative frames = temporary lethargy immunity
+                        }
+                    } else {
+                        this.framesSinceLastMove++; // Increment stagnation
+                    }
+                    
+                    // Try to consume food at new position
+                    tryConsumeFood(this);
+                    
+                    // Calculate energy cost with progressive lethargy
                     let energyCost = CONFIG.ENERGY_MOVE_COST;
                     if (this.specialAbilities.energyEfficiency) {
                         energyCost *= 0.7; // 30% less energy usage
                     }
-                    // NEW: Lethargy increases energy cost
+                    // NEW: Progressive lethargy - gets worse with stagnation
                     if (this.specialAbilities.lethargy) {
-                        energyCost *= 1.5; // 50% more energy usage
+                        let lethargyMultiplier = 1.5 + (this.framesSinceLastMove * 0.02); // Increases by 2% per frame of stagnation
+                        energyCost *= Math.min(lethargyMultiplier, 3.0); // Cap at 3x energy cost
                     }
                     
                     this.energy -= energyCost;
                 } else {
+                    // Failed to move - increase stagnation for lethargy system
+                    this.framesSinceLastMove++;
+                    
                     // Failed to move - check if it's because of a wall
                     if (!this.handleWallInteraction(newX, newY)) {
                         // Could not handle wall interaction
@@ -1261,6 +1408,7 @@
                             this.specialAbilityUses.wallPhasing--;
                             this.x = attemptedX;
                             this.y = attemptedY;
+                            this.framesSinceLastMove = 0; // Reset lethargy since they successfully moved
                             console.log(`${this.type} phased through wall! Uses left: ${this.specialAbilityUses.wallPhasing}`);
                             return true;
                         }
@@ -1328,8 +1476,16 @@
                 }
                 
                 if (this.specialAbilities.lethargy) {
-                    // Uses more energy for all actions
-                    this.energy -= 0.4;
+                    // Progressive lethargy - more energy drain the longer without movement
+                    let lethargyDrain = 0.4 + (this.framesSinceLastMove * 0.01); // Base 0.4 + 1% per stagnant frame
+                    this.energy -= Math.min(lethargyDrain, 2.0); // Cap at 2.0 energy loss per frame
+                    
+                    // Visual feedback for severe lethargy
+                    if (this.framesSinceLastMove > 100) {
+                        this.severeLethargy = true;
+                    } else {
+                        this.severeLethargy = false;
+                    }
                 }
                 
                 if (this.specialAbilities.anxiety) {
@@ -1367,6 +1523,9 @@
                 this.isAlive = false;
                 this.eliminationReason = reason;
                 console.log(`${this.type} creature eliminated: ${reason}`);
+                
+                // Create food from dead creature
+                createFoodFromDeath(this.x, this.y);
             }
 
             // Calculate fitness based on the current game mode
@@ -1614,6 +1773,14 @@
                     ctx.fillRect(pixelX + 2, pixelY + 2, CONFIG.GRID_SIZE - 5, CONFIG.GRID_SIZE - 5);
                 }
                 
+                // Severe lethargy effect (slow pulsing dark overlay)
+                if (this.severeLethargy) {
+                    let pulseIntensity = 0.3 + 0.2 * Math.sin(frameCount * 0.1);
+                    ctx.fillStyle = '#4a0080'; // Dark purple
+                    ctx.globalAlpha = pulseIntensity;
+                    ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                }
+                
                 // Special ability indicators
                 this.drawAbilityIndicators(pixelX, pixelY);
                 
@@ -1700,6 +1867,78 @@
                 
                 ctx.globalAlpha = 1.0;
             }
+        }
+
+        // ===== FOOD SYSTEM FUNCTIONS =====
+        // Functions for managing food creation, consumption, and clustering
+
+        // Create food when a creature dies
+        function createFoodFromDeath(x, y) {
+            // Track death location for clustering
+            let locationKey = `${x},${y}`;
+            if (!deathMap.has(locationKey)) {
+                deathMap.set(locationKey, {
+                    count: 0,
+                    lastDeath: frameCount
+                });
+            }
+            
+            let deathData = deathMap.get(locationKey);
+            deathData.count++;
+            deathData.lastDeath = frameCount;
+            
+            // Check for nearby deaths within cluster radius
+            let nearbyDeaths = 0;
+            for (let dx = -CONFIG.FOOD_CLUSTER_RADIUS; dx <= CONFIG.FOOD_CLUSTER_RADIUS; dx++) {
+                for (let dy = -CONFIG.FOOD_CLUSTER_RADIUS; dy <= CONFIG.FOOD_CLUSTER_RADIUS; dy++) {
+                    let nearKey = `${x + dx},${y + dy}`;
+                    if (deathMap.has(nearKey)) {
+                        let nearData = deathMap.get(nearKey);
+                        // Only count recent deaths (within last few frames)
+                        if (frameCount - nearData.lastDeath < CONFIG.FOOD_DECAY_FRAMES) {
+                            nearbyDeaths += nearData.count;
+                        }
+                    }
+                }
+            }
+            
+            // Create food cluster if enough deaths nearby
+            if (nearbyDeaths >= CONFIG.FOOD_CLUSTER_MIN_DEATHS) {
+                let clusterFoods = Food.createCluster(x, y, nearbyDeaths);
+                foods.push(...clusterFoods);
+                console.log(`Food cluster created at (${x},${y}) with ${nearbyDeaths} deaths`);
+            } else {
+                // Create single food item
+                foods.push(new Food(x, y));
+            }
+        }
+
+        // Update all food items
+        function updateFood() {
+            // Update existing food and remove expired items
+            foods = foods.filter(food => food.update());
+            
+            // Clean up old death data
+            for (let [key, data] of deathMap.entries()) {
+                if (frameCount - data.lastDeath > CONFIG.FOOD_DECAY_FRAMES * 2) {
+                    deathMap.delete(key);
+                }
+            }
+        }
+
+        // Check if creature can consume food at its location
+        function tryConsumeFood(creature) {
+            for (let i = foods.length - 1; i >= 0; i--) {
+                let food = foods[i];
+                if (food.x === creature.x && food.y === creature.y && food.canBeConsumed()) {
+                    let energyGained = food.consume();
+                    creature.energy = Math.min(CONFIG.MAX_ENERGY, creature.energy + energyGained);
+                    foods.splice(i, 1); // Remove consumed food
+                    console.log(`${creature.type} consumed food for ${energyGained} energy`);
+                    return true;
+                }
+            }
+            return false;
         }
 
         // ===== GENETIC ALGORITHM FUNCTIONS =====
@@ -1961,6 +2200,8 @@
         // Create the initial population of creatures
         function createInitialPopulation() {
             creatures = [];
+            foods = []; // Clear food from previous generation
+            deathMap.clear(); // Clear death tracking
             
             // Create walls first
             createWalls();
@@ -2055,6 +2296,9 @@
                 creature.calculateFitness();
             });
             
+            // Update food system
+            updateFood();
+            
             // Update statistics
             stats.aliveCount = aliveCreatures.length;
             stats.eliminatedCount = creatures.length - aliveCreatures.length;
@@ -2080,6 +2324,9 @@
             
             // Draw walls first
             walls.forEach(wall => wall.draw());
+            
+            // Draw food
+            foods.forEach(food => food.draw());
             
             // Draw all creatures (living and eliminated)
             creatures.forEach(creature => creature.draw());
@@ -2121,6 +2368,7 @@
             document.getElementById('bestFitness').textContent = stats.bestFitness.toFixed(2);
             document.getElementById('aliveCount').textContent = stats.aliveCount;
             document.getElementById('eliminatedCount').textContent = stats.eliminatedCount;
+            document.getElementById('foodCount').textContent = foods.length;
             
             // Count active abilities
             let totalAbilities = creatures.reduce((sum, creature) => {
@@ -2700,9 +2948,19 @@
          * 7. Adjust evolution parameters in the genetic algorithm functions
          * 
          * LATEST FEATURES ADDED:
+         * - Food system: Dead creatures become food sources that provide energy
+         * - Death clustering: Multiple deaths in close proximity create food clusters
+         * - Resource competition: Food decays over time, creating scarcity dynamics
          * - Cooperative tag removal: Same-type creatures can heal each other's tags
          * - Special abilities system: Unique mutations for hunters vs prey
          * - Enhanced strategic depth: Wall-baiting, teamwork, evasion tactics
+         * 
+         * FOOD SYSTEM:
+         * - Dead creatures automatically become food sources at their death location
+         * - Food provides energy when consumed by creatures moving over it
+         * - Food clusters form when multiple deaths occur in close proximity
+         * - Food decays over time, becoming less nutritious and eventually disappearing
+         * - Creates resource management dynamics that drive evolution
          * 
          * HUNTER SPECIAL ABILITIES:
          * - Pack Hunting: Enhanced detection of prey
@@ -2719,13 +2977,19 @@
          * - Group Healing: Enhanced healing of nearby prey
          * 
          * STRATEGIC GAMEPLAY:
+         * - Food creates additional survival strategies beyond just avoiding elimination
+         * - Death locations become strategic resources that creatures compete for
+         * - Energy management balances movement, survival, and food acquisition
          * - Hunters can work together to corner prey
          * - Prey can lead hunters into walls for damage
          * - Same-type cooperation removes tags and provides healing
          * - Special abilities create unique creature lineages
-         * - Energy management becomes crucial for survival
+         * - Food scarcity drives evolution toward more efficient creatures
          * 
          * EXPERIMENT IDEAS:
+         * - Observe how food distribution affects creature movement patterns
+         * - Test if creatures evolve to seek out death clusters for better nutrition
+         * - Modify food decay rates to create feast/famine cycles
          * - Create pack-hunting strategies by adjusting hunter abilities
          * - Test prey survival techniques with different ability combinations
          * - Adjust wall density to create maze-like tactical environments
