@@ -409,7 +409,7 @@
                     <strong>Speed Burst:</strong> Double speed when low energy (5 uses)
                 </div>
                 <div class="ability-item hunter-ability">
-                    <strong>Territorial:</strong> Gain energy near other hunters
+                    <strong>Territorial:</strong> Pack bonus energy, aggression bonus, penalty when alone
                 </div>
             </div>
 
@@ -419,35 +419,35 @@
                     <strong>Camouflage:</strong> Become invisible to hunters periodically
                 </div>
                 <div class="ability-item prey-ability">
-                    <strong>Evasion:</strong> 30% chance to avoid being tagged
+                    <strong>Evasion:</strong> 30% chance to avoid being tagged (energy cost, cooldown)
                 </div>
                 <div class="ability-item prey-ability">
-                    <strong>Energy Efficient:</strong> 30% less energy consumption
+                    <strong>Energy Efficient:</strong> 30% less energy consumption, 30% more from food
                 </div>
                 <div class="ability-item prey-ability">
-                    <strong>Wall Phasing:</strong> Pass through walls (3 uses)
+                    <strong>Wall Phasing:</strong> Pass through walls (3 uses), resets lethargy
                 </div>
                 <div class="ability-item prey-ability">
-                    <strong>Group Healing:</strong> Enhanced cooperative healing
+                    <strong>Group Healing:</strong> Area-of-effect healing for nearby same-type creatures
                 </div>
             </div>
 
             <h4 style="color: #ff9999; margin: 12px 0 8px 0;">⚠️ Negative Mutations (Both Types)</h4>
             <div class="ability-list">
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
-                    <strong>Anxiety:</strong> Avoids others, blocks group healing
+                    <strong>Anxiety:</strong> Flees from others, distorted vision, reduced food benefit, blocks healing
                 </div>
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
                     <strong>Aggression:</strong> Occasionally attacks own type
                 </div>
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
-                    <strong>Paranoia:</strong> Random direction changes, wastes energy
+                    <strong>Paranoia:</strong> Random direction changes, distorted vision, extra energy waste
                 </div>
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
                     <strong>Lethargy:</strong> Progressive movement slowdown - gets worse without movement, increased energy drain, eventual complete inactivity
                 </div>
                 <div class="ability-item" style="border-left: 3px solid #ff6666; background: #2a1a1a;">
-                    <strong>Confusion:</strong> Sometimes moves in wrong direction
+                    <strong>Confusion:</strong> Random movements, misidentified threats, scrambled vision
                 </div>
             </div>
 
@@ -542,6 +542,7 @@
             
             // Energy system
             STARTING_ENERGY: 100,       // Energy creatures start with
+            MAX_ENERGY: 150,            // Maximum energy a creature can have
             ENERGY_DECAY: 0.2,          // Energy lost per frame
             ENERGY_MOVE_COST: 0.5,      // Extra energy cost for moving
             ENERGY_GAIN_SURVIVAL: 0.3,  // Energy gained for surviving (prey/hiders)
@@ -1122,6 +1123,7 @@
                 this.abilityCountdown = {       // Cooldowns for abilities
                     speedBurst: 0,
                     camouflage: 0,
+                    evasion: 0,
                 };
                 
                 // Movement and behavior
@@ -1184,6 +1186,21 @@
                 return true;
             }
 
+            // NEW: Helper function to find direction away from a target (for anxiety)
+            getDirectionAwayFrom(targetX, targetY) {
+                let dx = this.x - targetX;
+                let dy = this.y - targetY;
+                
+                // Find the direction that moves us furthest from target
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Move horizontally away
+                    return dx > 0 ? 3 : 2; // RIGHT if target is left, LEFT if target is right
+                } else {
+                    // Move vertically away
+                    return dy > 0 ? 1 : 0; // DOWN if target is above, UP if target is below
+                }
+            }
+
             // Get sensory input from the environment
             getInputs() {
                 let inputs = [];
@@ -1244,6 +1261,21 @@
                                 return 0.9; // Enhanced target detection
                             }
                             
+                            // Paranoia makes everything look threatening
+                            if (this.specialAbilities.paranoia && Math.random() < 0.3) {
+                                return 0.2; // Everything seems dangerous when paranoid
+                            }
+                            
+                            // Confusion makes creatures misidentify others
+                            if (this.specialAbilities.confusion && Math.random() < 0.2) {
+                                return Math.random(); // Random vision when confused
+                            }
+                            
+                            // Anxiety makes own-type creatures seem threatening
+                            if (this.specialAbilities.anxiety && this.type === creature.type) {
+                                return 0.3; // Own type seen as mild threat due to anxiety
+                            }
+                            
                             // Return different values based on creature type relationship
                             if (this.type === 'HUNTER' && creature.type === 'PREY') {
                                 return 0.8; // Target found!
@@ -1278,6 +1310,24 @@
                 if (this.specialAbilities.confusion && Math.random() < 0.2) {
                     // 20% chance to move in wrong direction
                     chosenDirection = Math.floor(Math.random() * 4);
+                }
+                
+                // NEW: Anxiety makes creatures flee from others
+                if (this.specialAbilities.anxiety) {
+                    // Check for nearby creatures and try to move away
+                    let nearbyCreatures = creatures.filter(c => 
+                        c !== this && c.isAlive &&
+                        Math.abs(c.x - this.x) <= 2 && Math.abs(c.y - this.y) <= 2
+                    );
+                    
+                    if (nearbyCreatures.length > 0 && Math.random() < 0.6) {
+                        // Find direction away from nearest creature
+                        let nearest = nearbyCreatures[0];
+                        let awayDirection = this.getDirectionAwayFrom(nearest.x, nearest.y);
+                        if (awayDirection !== -1) {
+                            chosenDirection = awayDirection;
+                        }
+                    }
                 }
                 
                 if (this.specialAbilities.paranoia && Math.random() < 0.3) {
@@ -1451,13 +1501,23 @@
 
             // NEW: Apply passive special abilities
             applyPassiveAbilities() {
-                // Territorial instinct for hunters
+                // Territorial instinct for hunters - benefit from pack, penalty when alone
                 if (this.specialAbilities.territorialInstinct && this.type === 'HUNTER') {
                     let nearbyHunters = creatures.filter(c => 
                         c !== this && c.isAlive && c.type === 'HUNTER' &&
                         Math.abs(c.x - this.x) <= 2 && Math.abs(c.y - this.y) <= 2
                     ).length;
-                    this.energy += nearbyHunters * 0.2;
+                    
+                    if (nearbyHunters > 0) {
+                        this.energy += nearbyHunters * 0.3; // Increased pack bonus
+                    } else {
+                        this.energy -= 0.2; // Penalty for being alone (pack animals need pack)
+                    }
+                    
+                    // Territorial creatures are more aggressive to prey (bonus damage)
+                    this.territorialAggression = true;
+                } else {
+                    this.territorialAggression = false;
                 }
                 
                 // Gain energy for surviving (if prey/hider)
@@ -1643,8 +1703,13 @@
                             // Hunter tagging prey
                             if (this.type === 'HUNTER' && other.type === 'PREY') {
                                 // Check for evasion ability
-                                if (other.specialAbilities.evasion && Math.random() < 0.3) {
-                                    console.log(`Prey evaded hunter's tag!`);
+                                if (other.specialAbilities.evasion && 
+                                    other.abilityCountdown.evasion === 0 && 
+                                    other.energy > 5 && 
+                                    Math.random() < 0.3) {
+                                    other.energy -= 5; // Energy cost for evasion
+                                    other.abilityCountdown.evasion = 45; // Cooldown
+                                    console.log(`Prey evaded hunter's tag! Energy cost: 5`);
                                     return;
                                 }
                                 
@@ -1662,6 +1727,13 @@
                                 if (this.specialAbilities.energyVampire) {
                                     energyGain *= 1.5;
                                     energyLoss *= 1.2;
+                                }
+                                
+                                // Territorial aggression bonus
+                                if (this.territorialAggression) {
+                                    energyGain *= 1.2;
+                                    energyLoss *= 1.1;
+                                    console.log(`Territorial hunter deals extra damage!`);
                                 }
                                 
                                 this.energy += energyGain;
@@ -1695,10 +1767,29 @@
                     patient.timesTagged--;
                     healer.energy -= CONFIG.HEAL_ENERGY_COST;
                     
-                    // Group healing ability bonus
+                    // Group healing ability bonus - heal multiple nearby creatures
                     if (healer.specialAbilities.groupHealing) {
                         patient.energy += 10; // Bonus healing
-                        console.log(`Enhanced group healing performed!`);
+                        
+                        // Area-of-effect healing for other nearby same-type creatures
+                        let nearbyInjured = creatures.filter(c => 
+                            c !== healer && c !== patient && c.isAlive && 
+                            c.type === healer.type && c.timesTagged > 0 &&
+                            Math.abs(c.x - healer.x) <= 1 && Math.abs(c.y - healer.y) <= 1
+                        );
+                        
+                        for (let injured of nearbyInjured) {
+                            if (healer.energy >= 3) { // Small energy cost for AoE healing
+                                injured.timesTagged = Math.max(0, injured.timesTagged - 1);
+                                injured.energy += 5; // Smaller AoE heal
+                                healer.energy -= 3;
+                                injured.lastHealed = 15;
+                            }
+                        }
+                        
+                        if (nearbyInjured.length > 0) {
+                            console.log(`Group healing affected ${nearbyInjured.length} additional creatures!`);
+                        }
                     }
                     
                     console.log(`${healer.type} healed ${patient.type}! Patient tags: ${patient.timesTagged}, Healer energy: ${healer.energy.toFixed(1)}`);
@@ -1932,9 +2023,25 @@
                 let food = foods[i];
                 if (food.x === creature.x && food.y === creature.y && food.canBeConsumed()) {
                     let energyGained = food.consume();
+                    
+                    // Energy efficiency affects food consumption too
+                    if (creature.specialAbilities.energyEfficiency) {
+                        energyGained *= 1.3; // 30% more energy from food
+                    }
+                    
+                    // Energy vampire ability allows hunters to gain extra from food
+                    if (creature.specialAbilities.energyVampire && creature.type === 'HUNTER') {
+                        energyGained *= 1.2; // 20% bonus for vampiric hunters
+                    }
+                    
+                    // Anxiety makes creatures gain less from food (stress eating)
+                    if (creature.specialAbilities.anxiety) {
+                        energyGained *= 0.8; // 20% penalty due to stress
+                    }
+                    
                     creature.energy = Math.min(CONFIG.MAX_ENERGY, creature.energy + energyGained);
                     foods.splice(i, 1); // Remove consumed food
-                    console.log(`${creature.type} consumed food for ${energyGained} energy`);
+                    console.log(`${creature.type} consumed food for ${energyGained.toFixed(1)} energy`);
                     return true;
                 }
             }
