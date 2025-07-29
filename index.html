@@ -249,6 +249,36 @@
             overflow-y: auto;
         }
 
+        /* Turbo mode styling */
+        .turbo-status {
+            font-size: 10px;
+            color: #ffaa00;
+            margin-top: 5px;
+            text-align: center;
+        }
+
+        #turboBtn {
+            background: linear-gradient(45deg, #ff6600, #ffaa00);
+            border: none;
+            color: white;
+            font-weight: bold;
+        }
+
+        #turboBtn:hover {
+            background: linear-gradient(45deg, #ff8800, #ffcc00);
+        }
+
+        #turboBtn.active {
+            background: linear-gradient(45deg, #cc0000, #ff0000);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
         .ability-item {
             font-size: 9px;
             line-height: 1.3;
@@ -334,6 +364,14 @@
                 <button id="pauseBtn">⏸️ Pause</button>
                 <button id="resetBtn">🔄 Reset</button>
                 <button id="evolveBtn">🧬 Evolve</button>
+                <button id="turboBtn">🚀 Turbo Mode</button>
+            </div>
+
+            <!-- Turbo Mode Settings -->
+            <div class="control-group" id="turboControls" style="display: none;">
+                <label>Turbo Generations: <span id="turboGenDisplay">100</span></label>
+                <input type="range" id="turboGenerations" min="50" max="500" value="100">
+                <div class="turbo-status" id="turboStatus"></div>
             </div>
 
             <!-- Basic Statistics -->
@@ -342,6 +380,8 @@
                 <div>Alive: <span id="aliveCount">0</span> | Eliminated: <span id="eliminatedCount">0</span></div>
                 <div>Best Fitness: <span id="bestFitness">0</span></div>
                 <div>Active Abilities: <span id="abilityCount">0</span></div>
+                <div>Neural Diversity: <span id="neuralDiversity">0</span> types</div>
+                <div>Topology Changes: <span id="topologyChanges">0</span></div>
             </div>
         </div>
     </div>
@@ -530,7 +570,18 @@
             
             // NEW: Simulation timing and display
             SHOW_TIMER: true,           // Show simulation timer
-            MAX_SPEED_MULTIPLIER: 50    // Allow up to 50x speed for fast iteration
+            MAX_SPEED_MULTIPLIER: 50,   // Allow up to 50x speed for fast iteration
+            
+            // NEW: NEAT topology evolution
+            NODE_ADD_RATE: 0.05,        // Chance to add a hidden node during mutation
+            NODE_REMOVE_RATE: 0.02,     // Chance to remove a hidden node during mutation
+            MIN_HIDDEN_NODES: 3,        // Minimum number of hidden nodes
+            MAX_HIDDEN_NODES: 12,       // Maximum number of hidden nodes
+            
+            // NEW: Turbo evolution mode
+            TURBO_MODE: false,          // Enable turbo evolution mode
+            TURBO_GENERATIONS: 100,     // How many generations to run in turbo mode
+            TURBO_STATS_INTERVAL: 10    // How often to update stats in turbo mode
         };
 
         // ===== GLOBAL VARIABLES =====
@@ -549,6 +600,16 @@
             eliminatedCount: 0
         };
         
+        // NEW: Turbo evolution mode
+        let turboModeActive = false;
+        let turboGenerationsLeft = 0;
+        let turboStats = {
+            startGeneration: 0,
+            bestFitnessHistory: [],
+            avgFitnessHistory: [],
+            topologyChanges: 0
+        };
+        
         // NEW: Simulation timing
         let simulationStartTime = 0;
         let simulationPausedTime = 0;
@@ -557,16 +618,19 @@
         // ===== NEURAL NETWORK CLASS =====
         // This represents the "brain" of each creature
         class NeuralNetwork {
-            constructor() {
+            constructor(hiddenNodeCount = CONFIG.HIDDEN_NODES) {
+                // Store the actual number of hidden nodes (can vary for NEAT)
+                this.hiddenNodeCount = hiddenNodeCount;
+                
                 // Initialize random weights for connections between nodes
                 // Input layer to hidden layer connections
-                this.inputToHidden = this.createMatrix(CONFIG.INPUT_NODES, CONFIG.HIDDEN_NODES);
+                this.inputToHidden = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenNodeCount);
                 
                 // Hidden layer to output layer connections
-                this.hiddenToOutput = this.createMatrix(CONFIG.HIDDEN_NODES, CONFIG.OUTPUT_NODES);
+                this.hiddenToOutput = this.createMatrix(this.hiddenNodeCount, CONFIG.OUTPUT_NODES);
                 
                 // Bias values (help with decision making)
-                this.hiddenBias = this.createArray(CONFIG.HIDDEN_NODES);
+                this.hiddenBias = this.createArray(this.hiddenNodeCount);
                 this.outputBias = this.createArray(CONFIG.OUTPUT_NODES);
                 
                 // Initialize with random values
@@ -616,7 +680,7 @@
             feedForward(inputs) {
                 // Calculate hidden layer values
                 let hidden = [];
-                for (let i = 0; i < CONFIG.HIDDEN_NODES; i++) {
+                for (let i = 0; i < this.hiddenNodeCount; i++) {
                     let sum = this.hiddenBias[i];
                     for (let j = 0; j < CONFIG.INPUT_NODES; j++) {
                         sum += inputs[j] * this.inputToHidden[j][i];
@@ -628,7 +692,7 @@
                 let outputs = [];
                 for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
                     let sum = this.outputBias[i];
-                    for (let j = 0; j < CONFIG.HIDDEN_NODES; j++) {
+                    for (let j = 0; j < this.hiddenNodeCount; j++) {
                         sum += hidden[j] * this.hiddenToOutput[j][i];
                     }
                     outputs[i] = this.activate(sum);
@@ -644,7 +708,7 @@
 
             // Create a copy of this neural network
             copy() {
-                let copy = new NeuralNetwork();
+                let copy = new NeuralNetwork(this.hiddenNodeCount);
                 
                 // Copy all weights and biases
                 for (let i = 0; i < this.inputToHidden.length; i++) {
@@ -702,6 +766,111 @@
                         this.outputBias[i] += (Math.random() * 0.2) - 0.1;
                     }
                 }
+                
+                // NEW: NEAT topology mutations
+                this.mutateTopology();
+            }
+
+            // NEW: NEAT topology mutations - add or remove hidden nodes
+            mutateTopology() {
+                // Try to add a hidden node
+                if (Math.random() < CONFIG.NODE_ADD_RATE && 
+                    this.hiddenNodeCount < CONFIG.MAX_HIDDEN_NODES) {
+                    this.addHiddenNode();
+                    turboStats.topologyChanges++;
+                }
+                
+                // Try to remove a hidden node  
+                if (Math.random() < CONFIG.NODE_REMOVE_RATE && 
+                    this.hiddenNodeCount > CONFIG.MIN_HIDDEN_NODES) {
+                    this.removeHiddenNode();
+                    turboStats.topologyChanges++;
+                }
+            }
+
+            // Add a new hidden node to the network
+            addHiddenNode() {
+                let oldHiddenCount = this.hiddenNodeCount;
+                this.hiddenNodeCount++;
+                
+                // Create new matrices with the additional node
+                let newInputToHidden = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenNodeCount);
+                let newHiddenToOutput = this.createMatrix(this.hiddenNodeCount, CONFIG.OUTPUT_NODES);
+                let newHiddenBias = this.createArray(this.hiddenNodeCount);
+                
+                // Copy existing weights
+                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
+                    for (let j = 0; j < oldHiddenCount; j++) {
+                        newInputToHidden[i][j] = this.inputToHidden[i][j];
+                    }
+                    // Initialize new node connections randomly
+                    newInputToHidden[i][oldHiddenCount] = (Math.random() * 2) - 1;
+                }
+                
+                for (let i = 0; i < oldHiddenCount; i++) {
+                    for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
+                        newHiddenToOutput[i][j] = this.hiddenToOutput[i][j];
+                    }
+                    newHiddenBias[i] = this.hiddenBias[i];
+                }
+                
+                // Initialize new node's output connections and bias
+                for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
+                    newHiddenToOutput[oldHiddenCount][j] = (Math.random() * 2) - 1;
+                }
+                newHiddenBias[oldHiddenCount] = (Math.random() * 2) - 1;
+                
+                // Update network
+                this.inputToHidden = newInputToHidden;
+                this.hiddenToOutput = newHiddenToOutput;
+                this.hiddenBias = newHiddenBias;
+                
+                console.log(`Added hidden node: ${oldHiddenCount} -> ${this.hiddenNodeCount}`);
+            }
+
+            // Remove a hidden node from the network
+            removeHiddenNode() {
+                if (this.hiddenNodeCount <= CONFIG.MIN_HIDDEN_NODES) return;
+                
+                let oldHiddenCount = this.hiddenNodeCount;
+                this.hiddenNodeCount--;
+                
+                // Choose a random node to remove
+                let nodeToRemove = Math.floor(Math.random() * oldHiddenCount);
+                
+                // Create new matrices without the removed node
+                let newInputToHidden = this.createMatrix(CONFIG.INPUT_NODES, this.hiddenNodeCount);
+                let newHiddenToOutput = this.createMatrix(this.hiddenNodeCount, CONFIG.OUTPUT_NODES);
+                let newHiddenBias = this.createArray(this.hiddenNodeCount);
+                
+                // Copy weights, skipping the removed node
+                for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
+                    let newJ = 0;
+                    for (let j = 0; j < oldHiddenCount; j++) {
+                        if (j !== nodeToRemove) {
+                            newInputToHidden[i][newJ] = this.inputToHidden[i][j];
+                            newJ++;
+                        }
+                    }
+                }
+                
+                let newI = 0;
+                for (let i = 0; i < oldHiddenCount; i++) {
+                    if (i !== nodeToRemove) {
+                        for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
+                            newHiddenToOutput[newI][j] = this.hiddenToOutput[i][j];
+                        }
+                        newHiddenBias[newI] = this.hiddenBias[i];
+                        newI++;
+                    }
+                }
+                
+                // Update network
+                this.inputToHidden = newInputToHidden;
+                this.hiddenToOutput = newHiddenToOutput;
+                this.hiddenBias = newHiddenBias;
+                
+                console.log(`Removed hidden node: ${oldHiddenCount} -> ${this.hiddenNodeCount}`);
             }
 
             // NEW: Mutate special abilities for creatures
@@ -1618,31 +1787,53 @@
 
         // Crossover - combine two neural networks
         function crossover(brain1, brain2) {
-            let child = new NeuralNetwork();
+            // Choose the parent with more hidden nodes as the base
+            let baseBrain = brain1.hiddenNodeCount >= brain2.hiddenNodeCount ? brain1 : brain2;
+            let otherBrain = baseBrain === brain1 ? brain2 : brain1;
             
-            // Randomly choose weights from either parent
-            for (let i = 0; i < brain1.inputToHidden.length; i++) {
-                for (let j = 0; j < brain1.inputToHidden[i].length; j++) {
-                    child.inputToHidden[i][j] = Math.random() < 0.5 ? 
-                        brain1.inputToHidden[i][j] : brain2.inputToHidden[i][j];
+            let child = new NeuralNetwork(baseBrain.hiddenNodeCount);
+            
+            // Crossover input to hidden weights
+            for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
+                for (let j = 0; j < child.hiddenNodeCount; j++) {
+                    if (j < otherBrain.hiddenNodeCount) {
+                        // Both parents have this connection
+                        child.inputToHidden[i][j] = Math.random() < 0.5 ? 
+                            baseBrain.inputToHidden[i][j] : otherBrain.inputToHidden[i][j];
+                    } else {
+                        // Only base parent has this connection
+                        child.inputToHidden[i][j] = baseBrain.inputToHidden[i][j];
+                    }
                 }
             }
             
-            for (let i = 0; i < brain1.hiddenToOutput.length; i++) {
-                for (let j = 0; j < brain1.hiddenToOutput[i].length; j++) {
-                    child.hiddenToOutput[i][j] = Math.random() < 0.5 ? 
-                        brain1.hiddenToOutput[i][j] : brain2.hiddenToOutput[i][j];
+            // Crossover hidden to output weights
+            for (let i = 0; i < child.hiddenNodeCount; i++) {
+                for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
+                    if (i < otherBrain.hiddenNodeCount) {
+                        // Both parents have this connection
+                        child.hiddenToOutput[i][j] = Math.random() < 0.5 ? 
+                            baseBrain.hiddenToOutput[i][j] : otherBrain.hiddenToOutput[i][j];
+                    } else {
+                        // Only base parent has this connection
+                        child.hiddenToOutput[i][j] = baseBrain.hiddenToOutput[i][j];
+                    }
                 }
             }
             
-            for (let i = 0; i < brain1.hiddenBias.length; i++) {
-                child.hiddenBias[i] = Math.random() < 0.5 ? 
-                    brain1.hiddenBias[i] : brain2.hiddenBias[i];
+            // Crossover biases
+            for (let i = 0; i < child.hiddenNodeCount; i++) {
+                if (i < otherBrain.hiddenNodeCount) {
+                    child.hiddenBias[i] = Math.random() < 0.5 ? 
+                        baseBrain.hiddenBias[i] : otherBrain.hiddenBias[i];
+                } else {
+                    child.hiddenBias[i] = baseBrain.hiddenBias[i];
+                }
             }
             
-            for (let i = 0; i < brain1.outputBias.length; i++) {
+            for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
                 child.outputBias[i] = Math.random() < 0.5 ? 
-                    brain1.outputBias[i] : brain2.outputBias[i];
+                    baseBrain.outputBias[i] : otherBrain.outputBias[i];
             }
             
             return child;
@@ -1743,7 +1934,7 @@
 
         // Main game loop
         function gameLoop() {
-            if (!isPaused) {
+            if (!isPaused && !turboModeActive) {
                 update();
                 draw();
                 
@@ -1755,7 +1946,7 @@
                 }
             }
             
-            // Continue the loop
+            // Continue the loop (but don't update display during turbo mode)
             requestAnimationFrame(gameLoop);
         }
 
@@ -1843,6 +2034,15 @@
             }, 0);
             document.getElementById('abilityCount').textContent = totalAbilities;
 
+            // NEW: Calculate neural network diversity
+            let hiddenNodeCounts = {};
+            creatures.forEach(creature => {
+                let count = creature.brain.hiddenNodeCount;
+                hiddenNodeCounts[count] = (hiddenNodeCounts[count] || 0) + 1;
+            });
+            document.getElementById('neuralDiversity').textContent = Object.keys(hiddenNodeCounts).length;
+            document.getElementById('topologyChanges').textContent = turboStats.topologyChanges;
+
             // NEW: Update simulation timer
             if (CONFIG.SHOW_TIMER && simulationStartTime > 0) {
                 let currentTime = Date.now();
@@ -1910,6 +2110,16 @@
             document.getElementById('gridSize').addEventListener('input', function(e) {
                 CONFIG.GRID_SIZE = parseInt(e.target.value);
                 document.getElementById('gridDisplay').textContent = e.target.value;
+                
+                // Recreate walls with new grid size
+                createWalls();
+                
+                // Reposition creatures to ensure they're still in valid positions
+                creatures.forEach(creature => {
+                    creature.findSafeStartingPosition();
+                });
+                
+                console.log(`Grid size changed to ${CONFIG.GRID_SIZE}, walls and creatures repositioned`);
             });
 
             // NEW: Wall density control
@@ -1960,6 +2170,16 @@
                 evolvePopulation();
             });
 
+            // NEW: Turbo mode controls
+            document.getElementById('turboBtn').addEventListener('click', function() {
+                toggleTurboMode();
+            });
+
+            document.getElementById('turboGenerations').addEventListener('input', function(e) {
+                CONFIG.TURBO_GENERATIONS = parseInt(e.target.value);
+                document.getElementById('turboGenDisplay').textContent = e.target.value;
+            });
+
             // Resize canvas when window resizes
             window.addEventListener('resize', function() {
                 CONFIG.CANVAS_WIDTH = window.innerWidth;
@@ -1975,6 +2195,134 @@
         }
 
         // ===== NEW UI FUNCTIONS =====
+        // NEW: Turbo Evolution Mode
+        function toggleTurboMode() {
+            if (turboModeActive) {
+                // Stop turbo mode
+                turboModeActive = false;
+                turboGenerationsLeft = 0;
+                document.getElementById('turboBtn').textContent = '🚀 Turbo Mode';
+                document.getElementById('turboBtn').classList.remove('active');
+                document.getElementById('turboControls').style.display = 'none';
+                document.getElementById('turboStatus').textContent = '';
+                console.log('Turbo mode stopped');
+            } else {
+                // Start turbo mode
+                if (isPaused) {
+                    alert('Please unpause the simulation before starting turbo mode');
+                    return;
+                }
+                
+                turboModeActive = true;
+                turboGenerationsLeft = CONFIG.TURBO_GENERATIONS;
+                turboStats.startGeneration = generation;
+                turboStats.bestFitnessHistory = [];
+                turboStats.avgFitnessHistory = [];
+                turboStats.topologyChanges = 0;
+                
+                document.getElementById('turboBtn').textContent = '⏹️ Stop Turbo';
+                document.getElementById('turboBtn').classList.add('active');
+                document.getElementById('turboControls').style.display = 'block';
+                
+                console.log(`Turbo mode started: ${CONFIG.TURBO_GENERATIONS} generations`);
+                
+                // Start the turbo evolution loop
+                runTurboEvolution();
+            }
+        }
+
+        // Run turbo evolution without visual updates
+        function runTurboEvolution() {
+            if (!turboModeActive || turboGenerationsLeft <= 0) {
+                // Turbo mode complete
+                finishTurboMode();
+                return;
+            }
+
+            // Update status
+            document.getElementById('turboStatus').textContent = 
+                `Running... ${CONFIG.TURBO_GENERATIONS - turboGenerationsLeft + 1}/${CONFIG.TURBO_GENERATIONS}`;
+
+            // Run one generation quickly
+            let generationsThisRound = Math.min(5, turboGenerationsLeft); // Process 5 generations at a time
+            
+            for (let i = 0; i < generationsThisRound; i++) {
+                // Fast evolution without visual updates
+                runFastGeneration();
+                turboGenerationsLeft--;
+                
+                // Record statistics every 10 generations
+                if ((CONFIG.TURBO_GENERATIONS - turboGenerationsLeft) % CONFIG.TURBO_STATS_INTERVAL === 0) {
+                    turboStats.bestFitnessHistory.push(stats.bestFitness);
+                    turboStats.avgFitnessHistory.push(stats.avgFitness);
+                }
+            }
+
+            // Continue on next frame
+            if (turboModeActive && turboGenerationsLeft > 0) {
+                requestAnimationFrame(runTurboEvolution);
+            } else {
+                finishTurboMode();
+            }
+        }
+
+        // Run a single generation at high speed without visual updates
+        function runFastGeneration() {
+            // Simulate creatures without drawing
+            for (let frame = 0; frame < CONFIG.GENERATION_LENGTH; frame++) {
+                creatures.forEach(creature => {
+                    if (creature.isAlive) {
+                        creature.think();
+                        creature.checkForTags();
+                    }
+                });
+            }
+            
+            // Evolve population
+            evolvePopulation();
+        }
+
+        // Finish turbo mode and show results
+        function finishTurboMode() {
+            turboModeActive = false;
+            document.getElementById('turboBtn').textContent = '🚀 Turbo Mode';
+            document.getElementById('turboBtn').classList.remove('active');
+            
+            // Calculate results
+            let finalGeneration = generation;
+            let generationsRun = finalGeneration - turboStats.startGeneration;
+            let bestImprovement = turboStats.bestFitnessHistory.length > 0 ? 
+                Math.max(...turboStats.bestFitnessHistory) - turboStats.bestFitnessHistory[0] : 0;
+            
+            // Count current neural network diversity
+            let hiddenNodeCounts = {};
+            creatures.forEach(creature => {
+                let count = creature.brain.hiddenNodeCount;
+                hiddenNodeCounts[count] = (hiddenNodeCounts[count] || 0) + 1;
+            });
+            
+            let diversity = Object.keys(hiddenNodeCounts).length;
+            
+            // Show results
+            let resultsMessage = `🚀 TURBO MODE COMPLETE! 🚀\n\n` +
+                `📊 Results:\n` +
+                `• Generations evolved: ${generationsRun}\n` +
+                `• Fitness improvement: ${bestImprovement.toFixed(2)}\n` +
+                `• Topology changes: ${turboStats.topologyChanges}\n` +
+                `• Neural diversity: ${diversity} different network sizes\n` +
+                `• Network size range: ${Math.min(...Object.keys(hiddenNodeCounts))} - ${Math.max(...Object.keys(hiddenNodeCounts))} nodes\n\n` +
+                `🧬 The simulation is now ready at generation ${finalGeneration}!`;
+            
+            document.getElementById('turboStatus').innerHTML = resultsMessage.replace(/\n/g, '<br>');
+            
+            console.log('Turbo mode completed:', {
+                generationsRun,
+                bestImprovement,
+                topologyChanges: turboStats.topologyChanges,
+                neuralDiversity: diversity,
+                hiddenNodeDistribution: hiddenNodeCounts
+            });
+        }
         // Toggle collapsible panels
         function togglePanel(panelId) {
             const content = document.getElementById(panelId + '-content');
@@ -2064,13 +2412,13 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             const network = creature.brain;
-            const inputs = 8;
-            const hidden = 6;
-            const outputs = 4;
+            const inputs = CONFIG.INPUT_NODES;
+            const hidden = network.hiddenNodeCount; // Use actual hidden node count
+            const outputs = CONFIG.OUTPUT_NODES;
             
-            // Node positions
+            // Node positions (dynamic based on actual node count)
             const inputY = Array.from({length: inputs}, (_, i) => 20 + i * 10);
-            const hiddenY = Array.from({length: hidden}, (_, i) => 30 + i * 15);
+            const hiddenY = Array.from({length: hidden}, (_, i) => 20 + i * (120 / hidden)); // Scale spacing
             const outputY = Array.from({length: outputs}, (_, i) => 35 + i * 20);
             
             // Draw connections
@@ -2119,8 +2467,8 @@
                 ctx.fill();
             });
             
-            // Hidden nodes
-            ctx.fillStyle = '#666';
+            // Hidden nodes (color varies by node count)
+            ctx.fillStyle = hidden <= CONFIG.HIDDEN_NODES ? '#666' : '#ff9900'; // Orange for extra nodes
             hiddenY.forEach(y => {
                 ctx.beginPath();
                 ctx.arc(160, y, 4, 0, 2 * Math.PI);
@@ -2128,12 +2476,18 @@
             });
             
             // Output nodes
-            ctx.fillStyle = creature.type === 'hunter' ? '#ff6666' : '#6666ff';
+            ctx.fillStyle = creature.type === 'HUNTER' ? '#ff6666' : '#6666ff';
             outputY.forEach(y => {
                 ctx.beginPath();
                 ctx.arc(290, y, 4, 0, 2 * Math.PI);
                 ctx.fill();
             });
+            
+            // Add text label for hidden node count
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${hidden} nodes`, 160, 150);
         }
 
         // ===== START THE SIMULATION =====
