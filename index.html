@@ -88,9 +88,10 @@
             
             // ===== SIMULATION SPEED CONTROLS =====
             // Allow user to speed up or slow down the simulation
-            MIN_SIMULATION_SPEED: 0.1,         // Slowest speed (10% normal speed)
-            MAX_SIMULATION_SPEED: 10.0,        // Fastest speed (10x normal speed)
+            MIN_SIMULATION_SPEED: 0.01,        // Slowest speed (1% normal speed - very slow for detailed observation)
+            MAX_SIMULATION_SPEED: 20.0,        // Fastest speed (20x normal speed)
             DEFAULT_SIMULATION_SPEED: 1.0,     // Normal speed (100%)
+            SPEED_CHANGE_STEP: 0.1,            // How much speed changes with each key press
             
             // ===== FITNESS & REWARD SYSTEM =====
             // How creatures are scored for evolutionary selection
@@ -372,26 +373,59 @@
 
             // DEEP TOPOLOGY MUTATION - Change the structure of the deep network
             mutateTopology() {
+                let originalLayers = this.hiddenLayers.length;
+                let originalNodes = this.hiddenLayers.reduce((sum, nodes) => sum + nodes, 0);
+                
                 // Chance to add a new layer
                 if (Math.random() < CONFIG.LAYER_ADD_RATE && 
                     this.hiddenLayers.length < CONFIG.MAX_HIDDEN_LAYERS) {
                     this.addHiddenLayer();
+                    deepNeatStats.layersAdded++;
                 }
                 
                 // Chance to remove a layer
                 if (Math.random() < CONFIG.LAYER_REMOVE_RATE && 
                     this.hiddenLayers.length > CONFIG.MIN_HIDDEN_LAYERS) {
                     this.removeHiddenLayer();
+                    deepNeatStats.layersRemoved++;
                 }
                 
                 // Chance to add nodes to existing layers
                 if (Math.random() < CONFIG.NODE_ADD_RATE) {
                     this.addNodeToRandomLayer();
+                    deepNeatStats.nodesAdded++;
                 }
                 
                 // Chance to remove nodes from existing layers
                 if (Math.random() < CONFIG.NODE_REMOVE_RATE) {
                     this.removeNodeFromRandomLayer();
+                    deepNeatStats.nodesRemoved++;
+                }
+                
+                // Track architecture diversity
+                let architectureString = this.hiddenLayers.join('-');
+                deepNeatStats.uniqueArchitectures.add(architectureString);
+                
+                // Update complexity tracking
+                let newComplexity = this.calculateComplexity();
+                let totalLayers = this.hiddenLayers.length;
+                let totalNodes = this.hiddenLayers.reduce((sum, nodes) => sum + nodes, 0);
+                
+                // Track most/least complex networks
+                if (newComplexity > deepNeatStats.mostComplexNetwork.complexity) {
+                    deepNeatStats.mostComplexNetwork = {
+                        layers: totalLayers,
+                        nodes: totalNodes,
+                        complexity: newComplexity
+                    };
+                }
+                
+                if (newComplexity < deepNeatStats.simplestNetwork.complexity) {
+                    deepNeatStats.simplestNetwork = {
+                        layers: totalLayers,
+                        nodes: totalNodes,
+                        complexity: newComplexity
+                    };
                 }
             }
 
