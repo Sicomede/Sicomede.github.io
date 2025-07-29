@@ -122,6 +122,17 @@
             <input type="range" id="gridSize" min="20" max="60" value="30">
         </div>
 
+        <!-- NEW: Energy System Controls -->
+        <div class="control-group">
+            <label>Wall Density: <span id="wallDisplay">5%</span></label>
+            <input type="range" id="wallDensity" min="0" max="15" value="5">
+        </div>
+
+        <div class="control-group">
+            <label>Energy Decay: <span id="energyDecayDisplay">0.2</span></label>
+            <input type="range" id="energyDecay" min="0.1" max="1.0" step="0.1" value="0.2">
+        </div>
+
         <!-- Controls -->
         <div class="control-group">
             <button id="pauseBtn">⏸️ Pause</button>
@@ -135,6 +146,8 @@
             <div>Best Fitness: <span id="bestFitness">0</span></div>
             <div>Average Fitness: <span id="avgFitness">0</span></div>
             <div>Tags: <span id="tagCount">0</span></div>
+            <div>Alive: <span id="aliveCount">0</span></div>
+            <div>Eliminated: <span id="eliminatedCount">0</span></div>
         </div>
     </div>
 
@@ -173,8 +186,23 @@
             VISION_RANGE: 3,            // How far creatures can see
             TAG_DISTANCE: 1,            // Distance needed to tag
             
+            // Energy system
+            STARTING_ENERGY: 100,       // Energy creatures start with
+            ENERGY_DECAY: 0.2,          // Energy lost per frame
+            ENERGY_MOVE_COST: 0.5,      // Extra energy cost for moving
+            ENERGY_GAIN_SURVIVAL: 0.3,  // Energy gained for surviving (prey/hiders)
+            ENERGY_GAIN_TAG: 20,        // Energy gained for successful tag
+            
+            // Elimination system
+            MAX_TAGS_BEFORE_OUT: 3,     // How many times you can be tagged before elimination
+            ENERGY_DEATH_THRESHOLD: 0, // Energy level that causes death
+            
+            // Environment
+            WALL_DENSITY: 0.05,         // Percentage of grid filled with deadly walls
+            WALL_KILL_ENERGY: 50,       // Energy lost when touching walls
+            
             // Evolution timing
-            GENERATION_LENGTH: 2000,    // Frames before evolution
+            GENERATION_LENGTH: 3000,    // Frames before evolution (longer for new mechanics)
             
             // Colors for different creature types
             COLORS: {
@@ -196,7 +224,9 @@
         let stats = {
             tags: 0,
             bestFitness: 0,
-            avgFitness: 0
+            avgFitness: 0,
+            aliveCount: 0,
+            eliminatedCount: 0
         };
 
         // ===== NEURAL NETWORK CLASS =====
@@ -350,6 +380,30 @@
             }
         }
 
+        // ===== WALL CLASS =====
+        // Represents deadly obstacles in the environment
+        class Wall {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.type = 'WALL';
+            }
+
+            // Draw the wall
+            draw() {
+                let pixelX = this.x * CONFIG.GRID_SIZE;
+                let pixelY = this.y * CONFIG.GRID_SIZE;
+                
+                ctx.fillStyle = CONFIG.COLORS.WALL;
+                ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                
+                // Add danger indicator (red outline)
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(pixelX + 1, pixelY + 1, CONFIG.GRID_SIZE - 3, CONFIG.GRID_SIZE - 3);
+            }
+        }
+
         // ===== CREATURE CLASS =====
         // Represents individual creatures in the simulation
         class Creature {
@@ -362,14 +416,70 @@
                 this.type = type;               // HUNTER, PREY, or NEUTRAL
                 this.brain = new NeuralNetwork(); // The creature's neural network
                 this.fitness = 0;               // How well this creature performs
-                this.energy = 100;              // Energy level (affects survival)
+                this.energy = CONFIG.STARTING_ENERGY; // Energy level (affects survival)
                 this.age = 0;                   // How long the creature has lived
+                
+                // NEW: Elimination system
+                this.isAlive = true;            // Whether creature is still active
+                this.timesTagged = 0;           // How many times this creature was tagged
+                this.eliminationReason = '';   // Why creature was eliminated
                 
                 // Movement and behavior
                 this.lastMove = { x: 0, y: 0 }; // Track movement for fitness
                 this.tags = 0;                  // Number of successful tags
                 this.timeAlive = 0;             // Survival time
                 this.timeSinceLastTag = 0;      // Used for fitness calculation
+                this.timesSurvived = 0;         // Frames survived without being tagged
+                
+                // Ensure starting position is not on a wall
+                this.findSafeStartingPosition();
+            }
+
+            // NEW: Find a safe starting position (not on walls or other creatures)
+            findSafeStartingPosition() {
+                let attempts = 0;
+                let maxAttempts = 100;
+                
+                while (attempts < maxAttempts) {
+                    let testX = Math.floor(Math.random() * (CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE));
+                    let testY = Math.floor(Math.random() * (CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE));
+                    
+                    if (this.isPositionSafe(testX, testY)) {
+                        this.x = testX;
+                        this.y = testY;
+                        return;
+                    }
+                    attempts++;
+                }
+                
+                // If no safe position found, use current position and hope for the best
+                console.warn('Could not find safe starting position for creature');
+            }
+
+            // NEW: Check if a position is safe (no walls, no other creatures)
+            isPositionSafe(x, y) {
+                // Check boundaries
+                if (x < 0 || x >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
+                    y < 0 || y >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
+                    return false;
+                }
+                
+                // Check for walls
+                for (let wall of walls) {
+                    if (wall.x === x && wall.y === y) {
+                        return false;
+                    }
+                }
+                
+                // Check for other creatures
+                for (let creature of creatures) {
+                    if (creature !== this && creature.isAlive && 
+                        creature.x === x && creature.y === y) {
+                        return false;
+                    }
+                }
+                
+                return true;
             }
 
             // Get sensory input from the environment
@@ -384,20 +494,18 @@
                 ];
 
                 for (let dir of directions) {
-                    let nearestCreature = this.findNearestCreature(dir[0], dir[1]);
+                    let visionData = this.lookInDirection(dir[0], dir[1]);
                     
-                    // Input represents: distance to nearest creature in this direction
-                    // 0 = very close, 1 = very far
-                    inputs.push(nearestCreature);
+                    // Input represents what the creature sees in this direction
+                    // 0 = wall/boundary, 0.5 = creature, 1 = empty space
+                    inputs.push(visionData);
                 }
 
                 return inputs;
             }
 
-            // Find the nearest creature in a specific direction
-            findNearestCreature(dirX, dirY) {
-                let minDistance = CONFIG.VISION_RANGE;
-                
+            // NEW: Enhanced vision system that detects walls and creatures
+            lookInDirection(dirX, dirY) {
                 // Check each position in the direction up to vision range
                 for (let distance = 1; distance <= CONFIG.VISION_RANGE; distance++) {
                     let checkX = this.x + (dirX * distance);
@@ -406,22 +514,40 @@
                     // Check bounds
                     if (checkX < 0 || checkX >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
                         checkY < 0 || checkY >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
-                        return 0; // Hit boundary - very close obstacle
+                        return 0; // Hit boundary
                     }
                     
-                    // Check for other creatures
+                    // Check for walls (highest priority - danger!)
+                    for (let wall of walls) {
+                        if (wall.x === checkX && wall.y === checkY) {
+                            return 0; // Wall detected
+                        }
+                    }
+                    
+                    // Check for other living creatures
                     for (let creature of creatures) {
-                        if (creature !== this && creature.x === checkX && creature.y === checkY) {
-                            return 1 - (distance / CONFIG.VISION_RANGE); // Closer = higher value
+                        if (creature !== this && creature.isAlive && 
+                            creature.x === checkX && creature.y === checkY) {
+                            // Return different values based on creature type relationship
+                            if (this.type === 'HUNTER' && creature.type === 'PREY') {
+                                return 0.8; // Target found!
+                            } else if (this.type === 'PREY' && creature.type === 'HUNTER') {
+                                return 0.2; // Danger!
+                            } else {
+                                return 0.5; // Neutral creature
+                            }
                         }
                     }
                 }
                 
-                return 0; // Nothing found in range
+                return 1; // Clear path
             }
 
             // Make a decision about movement
             think() {
+                // Only think if alive
+                if (!this.isAlive) return;
+                
                 let inputs = this.getInputs();
                 let outputs = this.brain.feedForward(inputs);
                 
@@ -436,6 +562,8 @@
 
             // Move the creature in a chosen direction
             move(direction) {
+                if (!this.isAlive) return;
+                
                 let newX = this.x;
                 let newY = this.y;
                 
@@ -447,104 +575,168 @@
                     case 3: newX++; break; // RIGHT
                 }
                 
-                // Check bounds and collisions
-                if (this.isValidPosition(newX, newY)) {
+                // Check if the new position is safe
+                if (this.isPositionSafe(newX, newY)) {
                     this.lastMove.x = newX - this.x;
                     this.lastMove.y = newY - this.y;
                     this.x = newX;
                     this.y = newY;
                     
                     // Use energy for movement
-                    this.energy -= 0.1;
+                    this.energy -= CONFIG.ENERGY_MOVE_COST;
+                } else {
+                    // Failed to move - check if it's because of a wall
+                    this.checkWallCollision(newX, newY);
                 }
                 
+                // Update creature state
                 this.age++;
                 this.timeAlive++;
                 this.timeSinceLastTag++;
+                this.timesSurvived++;
+                
+                // Lose energy over time
+                this.energy -= CONFIG.ENERGY_DECAY;
+                
+                // Gain energy for surviving (if prey/hider)
+                if (this.type === 'PREY' && this.timeSinceLastTag > 0) {
+                    this.energy += CONFIG.ENERGY_GAIN_SURVIVAL;
+                }
+                
+                // Check for elimination conditions
+                this.checkElimination();
             }
 
-            // Check if a position is valid (not occupied, within bounds)
-            isValidPosition(x, y) {
-                // Check boundaries
-                if (x < 0 || x >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
-                    y < 0 || y >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
-                    return false;
-                }
-                
-                // Check for other creatures (optional collision)
-                // Commented out to allow creatures to occupy same space for tagging
-                /*
-                for (let creature of creatures) {
-                    if (creature !== this && creature.x === x && creature.y === y) {
-                        return false;
+            // NEW: Check collision with walls and apply damage
+            checkWallCollision(attemptedX, attemptedY) {
+                for (let wall of walls) {
+                    if (wall.x === attemptedX && wall.y === attemptedY) {
+                        // Hit a wall! Take damage
+                        this.energy -= CONFIG.WALL_KILL_ENERGY;
+                        console.log(`${this.type} creature hit wall! Energy: ${this.energy.toFixed(1)}`);
+                        
+                        // Add visual feedback for wall collision
+                        this.lastWallHit = 10; // Frames to show damage effect
+                        break;
                     }
                 }
-                */
+            }
+
+            // NEW: Check if creature should be eliminated
+            checkElimination() {
+                if (!this.isAlive) return;
                 
-                return true;
+                // Check energy death
+                if (this.energy <= CONFIG.ENERGY_DEATH_THRESHOLD) {
+                    this.eliminate('Energy Depleted');
+                    return;
+                }
+                
+                // Check tag limit
+                if (this.timesTagged >= CONFIG.MAX_TAGS_BEFORE_OUT) {
+                    this.eliminate('Tagged Out');
+                    return;
+                }
+                
+                // Keep energy within reasonable bounds
+                this.energy = Math.max(0, Math.min(CONFIG.STARTING_ENERGY * 1.5, this.energy));
+            }
+
+            // NEW: Eliminate creature from simulation
+            eliminate(reason) {
+                this.isAlive = false;
+                this.eliminationReason = reason;
+                console.log(`${this.type} creature eliminated: ${reason}`);
             }
 
             // Calculate fitness based on the current game mode
             calculateFitness() {
+                // Base fitness starts with survival time
+                let baseFitness = this.timeAlive * 1.0;
+                
                 switch(gameMode) {
                     case 'tag':
                         if (this.type === 'HUNTER') {
-                            // Hunters are rewarded for tagging and moving
-                            this.fitness = (this.tags * 100) + (this.timeAlive * 0.1) + 
-                                          (Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y)) * 0.5;
+                            // Hunters rewarded for tags, survival, and movement
+                            this.fitness = baseFitness + 
+                                          (this.tags * 150) + 
+                                          (this.energy * 0.5) +
+                                          (Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y)) * 2.0;
                         } else {
-                            // Prey is rewarded for surviving and avoiding hunters
-                            this.fitness = (this.timeAlive * 1.0) - (this.tags * 50) +
-                                          (this.timeSinceLastTag * 0.1);
+                            // Prey rewarded for survival, avoiding tags, maintaining energy
+                            this.fitness = baseFitness * 2.0 + 
+                                          (this.energy * 1.0) +
+                                          (this.timesSurvived * 0.5) -
+                                          (this.timesTagged * 100);
                         }
                         break;
                         
                     case 'hideSeek':
                         if (this.type === 'PREY') {
-                            // Prey tries to hide (stay away from others)
-                            this.fitness = this.timeAlive + (this.getAverageDistanceToOthers() * 10);
+                            // Prey tries to hide and survive
+                            this.fitness = baseFitness * 1.5 + 
+                                          (this.getAverageDistanceToHunters() * 20) +
+                                          (this.energy * 1.0) +
+                                          (this.timesSurvived * 1.0);
                         } else {
-                            // Hunters try to find prey
-                            this.fitness = (this.tags * 100) + (this.timeAlive * 0.1);
+                            // Hunters try to find and tag prey
+                            this.fitness = baseFitness + 
+                                          (this.tags * 200) + 
+                                          (this.energy * 0.5);
                         }
                         break;
                         
                     case 'mixed':
-                        // Balanced fitness for exploration and interaction
-                        this.fitness = (this.timeAlive * 0.5) + (this.tags * 50) + 
-                                      (Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y)) * 1.0;
+                        // Balanced fitness for exploration, survival, and interaction
+                        this.fitness = baseFitness + 
+                                      (this.tags * 100) + 
+                                      (this.energy * 0.8) +
+                                      (this.timesSurvived * 0.3) +
+                                      (Math.abs(this.lastMove.x) + Math.abs(this.lastMove.y)) * 1.5;
                         break;
+                }
+                
+                // Bonus for being alive
+                if (this.isAlive) {
+                    this.fitness += 50;
+                }
+                
+                // Penalty for elimination
+                if (!this.isAlive) {
+                    if (this.eliminationReason === 'Energy Depleted') {
+                        this.fitness *= 0.5; // Heavy penalty for poor energy management
+                    } else if (this.eliminationReason === 'Tagged Out') {
+                        this.fitness *= 0.7; // Moderate penalty for being caught
+                    }
                 }
                 
                 // Ensure fitness is never negative
                 this.fitness = Math.max(0, this.fitness);
             }
 
-            // Helper function to calculate average distance to other creatures
-            getAverageDistanceToOthers() {
-                if (creatures.length <= 1) return 0;
+            // Helper function to calculate average distance to hunters specifically
+            getAverageDistanceToHunters() {
+                let hunters = creatures.filter(c => c.type === 'HUNTER' && c.isAlive && c !== this);
+                if (hunters.length === 0) return 10; // Max distance if no hunters
                 
                 let totalDistance = 0;
-                let count = 0;
-                
-                for (let other of creatures) {
-                    if (other !== this) {
-                        let distance = Math.sqrt(
-                            Math.pow(this.x - other.x, 2) + 
-                            Math.pow(this.y - other.y, 2)
-                        );
-                        totalDistance += distance;
-                        count++;
-                    }
+                for (let hunter of hunters) {
+                    let distance = Math.sqrt(
+                        Math.pow(this.x - hunter.x, 2) + 
+                        Math.pow(this.y - hunter.y, 2)
+                    );
+                    totalDistance += distance;
                 }
                 
-                return count > 0 ? totalDistance / count : 0;
+                return totalDistance / hunters.length;
             }
 
             // Check for tagging with other creatures
             checkForTags() {
+                if (!this.isAlive) return;
+                
                 for (let other of creatures) {
-                    if (other !== this) {
+                    if (other !== this && other.isAlive) {
                         let distance = Math.sqrt(
                             Math.pow(this.x - other.x, 2) + 
                             Math.pow(this.y - other.y, 2)
@@ -553,10 +745,18 @@
                         if (distance <= CONFIG.TAG_DISTANCE) {
                             // Tag occurred!
                             if (this.type === 'HUNTER' && other.type === 'PREY') {
+                                // Hunter tags prey
                                 this.tags++;
-                                other.tags++; // Prey also gets tagged
+                                other.timesTagged++;
                                 this.timeSinceLastTag = 0;
+                                other.timeSinceLastTag = 0;
+                                
+                                // Energy transfer
+                                this.energy += CONFIG.ENERGY_GAIN_TAG;
+                                other.energy -= CONFIG.ENERGY_GAIN_TAG * 0.5;
+                                
                                 stats.tags++;
+                                console.log(`Hunter tagged prey! Hunter energy: ${this.energy.toFixed(1)}, Prey energy: ${other.energy.toFixed(1)}, Prey tags: ${other.timesTagged}`);
                             }
                         }
                     }
@@ -565,14 +765,20 @@
 
             // Draw the creature on the canvas
             draw() {
+                if (!this.isAlive) {
+                    // Draw eliminated creatures as faded ghosts
+                    this.drawEliminated();
+                    return;
+                }
+                
                 let pixelX = this.x * CONFIG.GRID_SIZE;
                 let pixelY = this.y * CONFIG.GRID_SIZE;
                 
                 // Choose color based on type
                 let color = CONFIG.COLORS[this.type];
                 
-                // Add some transparency based on energy
-                let alpha = Math.max(0.3, this.energy / 100);
+                // Transparency based on energy level
+                let alpha = Math.max(0.3, this.energy / CONFIG.STARTING_ENERGY);
                 
                 ctx.fillStyle = color;
                 ctx.globalAlpha = alpha;
@@ -580,12 +786,70 @@
                 // Draw the creature as a square
                 ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
                 
-                // Draw fitness indicator (brightness)
-                if (this.fitness > 0) {
-                    ctx.fillStyle = 'white';
-                    ctx.globalAlpha = Math.min(0.3, this.fitness / 1000);
+                // Energy bar
+                this.drawEnergyBar(pixelX, pixelY);
+                
+                // Wall collision effect
+                if (this.lastWallHit && this.lastWallHit > 0) {
+                    ctx.fillStyle = '#ff0000';
+                    ctx.globalAlpha = 0.5;
+                    ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                    this.lastWallHit--;
+                }
+                
+                // Tag indicator (if recently tagged)
+                if (this.timesTagged > 0 && this.timeSinceLastTag < 30) {
+                    ctx.fillStyle = '#ffff00';
+                    ctx.globalAlpha = 0.8;
                     ctx.fillRect(pixelX + 2, pixelY + 2, CONFIG.GRID_SIZE - 5, CONFIG.GRID_SIZE - 5);
                 }
+                
+                ctx.globalAlpha = 1.0;
+            }
+
+            // NEW: Draw energy bar above creature
+            drawEnergyBar(x, y) {
+                let barWidth = CONFIG.GRID_SIZE - 4;
+                let barHeight = 3;
+                let energyPercentage = Math.max(0, this.energy / CONFIG.STARTING_ENERGY);
+                
+                // Background
+                ctx.fillStyle = '#333333';
+                ctx.globalAlpha = 0.8;
+                ctx.fillRect(x + 2, y - 6, barWidth, barHeight);
+                
+                // Energy fill
+                if (energyPercentage > 0.6) {
+                    ctx.fillStyle = '#00ff00';
+                } else if (energyPercentage > 0.3) {
+                    ctx.fillStyle = '#ffff00';
+                } else {
+                    ctx.fillStyle = '#ff0000';
+                }
+                
+                ctx.fillRect(x + 2, y - 6, barWidth * energyPercentage, barHeight);
+            }
+
+            // NEW: Draw eliminated creatures
+            drawEliminated() {
+                let pixelX = this.x * CONFIG.GRID_SIZE;
+                let pixelY = this.y * CONFIG.GRID_SIZE;
+                
+                // Draw as gray ghost
+                ctx.fillStyle = '#666666';
+                ctx.globalAlpha = 0.2;
+                ctx.fillRect(pixelX, pixelY, CONFIG.GRID_SIZE - 1, CONFIG.GRID_SIZE - 1);
+                
+                // Draw X to show elimination
+                ctx.strokeStyle = '#ff0000';
+                ctx.globalAlpha = 0.5;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(pixelX + 2, pixelY + 2);
+                ctx.lineTo(pixelX + CONFIG.GRID_SIZE - 3, pixelY + CONFIG.GRID_SIZE - 3);
+                ctx.moveTo(pixelX + CONFIG.GRID_SIZE - 3, pixelY + 2);
+                ctx.lineTo(pixelX + 2, pixelY + CONFIG.GRID_SIZE - 3);
+                ctx.stroke();
                 
                 ctx.globalAlpha = 1.0;
             }
@@ -723,6 +987,9 @@
         function createInitialPopulation() {
             creatures = [];
             
+            // Create walls first
+            createWalls();
+            
             for (let i = 0; i < CONFIG.POPULATION_SIZE; i++) {
                 let type;
                 
@@ -746,6 +1013,28 @@
             }
         }
 
+        // NEW: Create walls in the environment
+        function createWalls() {
+            walls = [];
+            let gridWidth = Math.floor(CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE);
+            let gridHeight = Math.floor(CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE);
+            let totalCells = gridWidth * gridHeight;
+            let wallCount = Math.floor(totalCells * CONFIG.WALL_DENSITY);
+            
+            for (let i = 0; i < wallCount; i++) {
+                let x = Math.floor(Math.random() * gridWidth);
+                let y = Math.floor(Math.random() * gridHeight);
+                
+                // Make sure we don't place walls on top of each other
+                let wallExists = walls.some(wall => wall.x === x && wall.y === y);
+                if (!wallExists) {
+                    walls.push(new Wall(x, y));
+                }
+            }
+            
+            console.log(`Created ${walls.length} walls`);
+        }
+
         // Main game loop
         function gameLoop() {
             if (!isPaused) {
@@ -766,11 +1055,24 @@
 
         // Update all creatures
         function update() {
-            creatures.forEach(creature => {
+            let aliveCreatures = creatures.filter(c => c.isAlive);
+            
+            // Update only living creatures
+            aliveCreatures.forEach(creature => {
                 creature.think();
                 creature.checkForTags();
                 creature.calculateFitness();
             });
+            
+            // Update statistics
+            stats.aliveCount = aliveCreatures.length;
+            stats.eliminatedCount = creatures.length - aliveCreatures.length;
+            
+            // Check if we need to evolve early (if too few creatures alive)
+            if (aliveCreatures.length < CONFIG.POPULATION_SIZE * 0.1) {
+                console.log('Most creatures eliminated, forcing evolution...');
+                evolvePopulation();
+            }
             
             // Update UI
             updateDisplay();
@@ -785,7 +1087,10 @@
             // Draw grid (optional)
             drawGrid();
             
-            // Draw all creatures
+            // Draw walls first
+            walls.forEach(wall => wall.draw());
+            
+            // Draw all creatures (living and eliminated)
             creatures.forEach(creature => creature.draw());
         }
 
@@ -825,6 +1130,8 @@
             document.getElementById('bestFitness').textContent = stats.bestFitness.toFixed(2);
             document.getElementById('avgFitness').textContent = stats.avgFitness.toFixed(2);
             document.getElementById('tagCount').textContent = stats.tags;
+            document.getElementById('aliveCount').textContent = stats.aliveCount;
+            document.getElementById('eliminatedCount').textContent = stats.eliminatedCount;
         }
 
         // ===== EVENT LISTENERS =====
@@ -853,6 +1160,18 @@
                 document.getElementById('gridDisplay').textContent = e.target.value;
             });
 
+            // NEW: Wall density control
+            document.getElementById('wallDensity').addEventListener('input', function(e) {
+                CONFIG.WALL_DENSITY = parseFloat(e.target.value) / 100;
+                document.getElementById('wallDisplay').textContent = e.target.value + '%';
+            });
+
+            // NEW: Energy decay control
+            document.getElementById('energyDecay').addEventListener('input', function(e) {
+                CONFIG.ENERGY_DECAY = parseFloat(e.target.value);
+                document.getElementById('energyDecayDisplay').textContent = e.target.value;
+            });
+
             // Game mode selection
             document.getElementById('gameMode').addEventListener('change', function(e) {
                 gameMode = e.target.value;
@@ -872,6 +1191,8 @@
                 generation = 1;
                 frameCount = 0;
                 stats.tags = 0;
+                stats.aliveCount = 0;
+                stats.eliminatedCount = 0;
             });
 
             document.getElementById('evolveBtn').addEventListener('click', function() {
@@ -902,14 +1223,25 @@
          * 6. Create new game modes by modifying the gameMode switch statements
          * 7. Adjust evolution parameters in the genetic algorithm functions
          * 
+         * NEW FEATURES ADDED:
+         * - Energy system: Creatures lose energy over time and when moving
+         * - Elimination: Creatures die from energy depletion or being tagged 3 times
+         * - Collision detection: Creatures cannot occupy the same space
+         * - Deadly walls: Touch walls to lose energy (configurable)
+         * - Enhanced vision: Creatures can see walls and different creature types
+         * - Visual feedback: Energy bars, elimination indicators, wall collision effects
+         * 
          * EXPERIMENT IDEAS:
-         * - Add obstacles/walls to the environment
-         * - Create different creature species with unique abilities
-         * - Add energy/food mechanics
-         * - Implement more complex neural network architectures
-         * - Add visual indicators for creature "thoughts"
-         * - Create territorial behaviors
-         * - Add reproduction mechanics beyond simple evolution
+         * - Adjust energy gain/loss rates for different behaviors
+         * - Create safe zones where creatures can recover energy
+         * - Add different wall types (some beneficial, some harmful)
+         * - Implement pack hunting or group behaviors
+         * - Add seasonal effects (walls appear/disappear over time)
+         * - Create power-ups that give temporary abilities
+         * - Add different creature species with unique energy requirements
+         * - Implement breeding mechanics where successful creatures reproduce
+         * - Add sound/vibration detection as additional inputs
+         * - Create maze-like environments with strategic wall placement
          * =============================== */
     </script>
 </body>
