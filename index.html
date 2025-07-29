@@ -60,10 +60,10 @@
             
             // ===== ENERGY SYSTEM =====
             // Energy is like "health" - creatures die when it reaches zero
-            STARTING_ENERGY: 80,               // Energy creatures start with
-            MAX_ENERGY: 120,                   // Energy cap (can't go higher)
-            ENERGY_DECAY: 0.15,                // Energy lost every frame just for existing
-            ENERGY_MOVE_COST: 0.3,             // Extra energy cost for moving
+            STARTING_ENERGY: 120,              // Energy creatures start with (increased)
+            MAX_ENERGY: 150,                   // Energy cap (can't go higher)
+            ENERGY_DECAY: 0.08,                // Energy lost every frame just for existing (reduced for more learning time)
+            ENERGY_MOVE_COST: 0.2,             // Extra energy cost for moving (reduced)
             ENERGY_DEATH_THRESHOLD: 0.1,      // Creature dies when energy drops below this
             
             // ===== COMBAT & INTERACTION SYSTEM =====
@@ -75,9 +75,9 @@
             
             // ===== EVOLUTION & GENETICS PARAMETERS =====
             // These control how creatures evolve and improve over time
-            MUTATION_RATE: 0.25,               // Chance each neural network weight will mutate (25%)
-            ELITE_THRESHOLD: 0.7,              // Top 70% of performers can become parents
-            ABILITY_MUTATION_RATE: 0.08,       // Chance to gain a special ability (8%)
+            MUTATION_RATE: 0.15,               // Chance each neural network weight will mutate (15% - reduced for stability)
+            ELITE_THRESHOLD: 0.3,              // Top 30% of performers can become parents (more selective)
+            ABILITY_MUTATION_RATE: 0.05,       // Chance to gain a special ability (5% - reduced)
             MAX_SPECIAL_ABILITIES: 2,          // Maximum special abilities per creature
             
             // ===== ENVIRONMENT SETTINGS =====
@@ -251,16 +251,20 @@
                     let weightMatrix = this.weights[layerIndex];
                     let biasVector = this.biases[layerIndex];
                     
-                    // Randomize weights
+                    // Randomize weights with Xavier/Glorot initialization for better learning
+                    let fanIn = weightMatrix.length;
+                    let fanOut = weightMatrix[0].length;
+                    let limit = Math.sqrt(6.0 / (fanIn + fanOut)); // Xavier initialization
+                    
                     for (let i = 0; i < weightMatrix.length; i++) {
                         for (let j = 0; j < weightMatrix[i].length; j++) {
-                            weightMatrix[i][j] = (Math.random() * 2) - 1;
+                            weightMatrix[i][j] = (Math.random() * 2 - 1) * limit;
                         }
                     }
                     
-                    // Randomize biases
+                    // Randomize biases (smaller values)
                     for (let i = 0; i < biasVector.length; i++) {
-                        biasVector[i] = (Math.random() * 2) - 1;
+                        biasVector[i] = (Math.random() * 2 - 1) * 0.5;
                     }
                 }
             }
@@ -351,12 +355,20 @@
                     let weightMatrix = this.weights[layerIndex];
                     let biasVector = this.biases[layerIndex];
                     
-                    // Mutate weights
+                    // Mutate weights with adaptive mutation strength
                     for (let i = 0; i < weightMatrix.length; i++) {
                         for (let j = 0; j < weightMatrix[i].length; j++) {
                             if (Math.random() < rate) {
-                                weightMatrix[i][j] += (Math.random() * 0.4) - 0.2;
-                                weightMatrix[i][j] = Math.max(-1, Math.min(1, weightMatrix[i][j]));
+                                // Use both small and large mutations for exploration
+                                if (Math.random() < 0.8) {
+                                    // Small mutation (80% of the time)
+                                    weightMatrix[i][j] += (Math.random() * 0.4) - 0.2;
+                                } else {
+                                    // Large mutation (20% of the time) for exploration
+                                    weightMatrix[i][j] += (Math.random() * 2.0) - 1.0;
+                                }
+                                // Clamp to reasonable range
+                                weightMatrix[i][j] = Math.max(-3, Math.min(3, weightMatrix[i][j]));
                             }
                         }
                     }
@@ -364,8 +376,12 @@
                     // Mutate biases
                     for (let i = 0; i < biasVector.length; i++) {
                         if (Math.random() < rate) {
-                            biasVector[i] += (Math.random() * 0.4) - 0.2;
-                            biasVector[i] = Math.max(-1, Math.min(1, biasVector[i]));
+                            if (Math.random() < 0.8) {
+                                biasVector[i] += (Math.random() * 0.4) - 0.2;
+                            } else {
+                                biasVector[i] += (Math.random() * 1.0) - 0.5;
+                            }
+                            biasVector[i] = Math.max(-2, Math.min(2, biasVector[i]));
                         }
                     }
                 }
@@ -1089,13 +1105,13 @@
                     // Check if we've hit world boundaries
                     if (checkX < 0 || checkX >= CONFIG.CANVAS_WIDTH / CONFIG.GRID_SIZE ||
                         checkY < 0 || checkY >= CONFIG.CANVAS_HEIGHT / CONFIG.GRID_SIZE) {
-                        return 0; // Boundary detected
+                        return 0.1; // Boundary detected - clear signal
                     }
                     
                     // Check for walls
                     for (let wall of walls) {
                         if (wall.x === checkX && wall.y === checkY) {
-                            return 0; // Wall detected
+                            return 0.2; // Wall detected - danger signal
                         }
                     }
                     
@@ -1119,19 +1135,21 @@
                                 continue; // Skip this creature (invisible)
                             }
                             
-                            // Return different values based on relationship
+                            // Return different values based on relationship and distance
+                            let distanceMultiplier = 1.0 - (distance * 0.2); // Closer = stronger signal
+                            
                             if (this.type === 'HUNTER' && creature.type === 'PREY') {
-                                return 0.8; // Target detected (good for hunters)
+                                return 0.8 * distanceMultiplier; // Target detected (good for hunters)
                             } else if (this.type === 'PREY' && creature.type === 'HUNTER') {
-                                return 0.2; // Danger detected (bad for prey)
+                                return 0.3 * distanceMultiplier; // Danger detected (bad for prey)
                             } else {
-                                return 0.6; // Same type detected (neutral)
+                                return 0.6 * distanceMultiplier; // Same type detected (neutral)
                             }
                         }
                     }
                 }
                 
-                return 1; // Nothing detected (clear path)
+                return 1.0; // Nothing detected (clear path) - strong positive signal
             }
 
             // THINK - This is where the AI "brain" makes decisions
@@ -1147,8 +1165,14 @@
                 let outputs = this.brain.feedForward(inputs);
                 
                 // STEP 3: Choose movement direction based on highest output
+                // Add some randomness to prevent getting stuck in local minima
                 let maxOutput = Math.max(...outputs);
                 let chosenDirection = outputs.indexOf(maxOutput);
+                
+                // Add small chance for random exploration to prevent stagnation
+                if (Math.random() < 0.05) { // 5% chance for random move
+                    chosenDirection = Math.floor(Math.random() * 4);
+                }
                 
                 // SPECIAL ABILITY: Lethargy (negative trait)
                 // Sometimes skip movement due to laziness
@@ -1361,20 +1385,46 @@
                     // HUNTER FITNESS: Reward aggressive, successful hunting
                     this.fitness += this.totalTags * CONFIG.HUNTER_TAG_REWARD;       // Big reward for tagging prey
                     this.fitness += this.lifetimeFrames * CONFIG.HUNTER_SURVIVAL_REWARD; // Small reward for survival
-                    this.fitness += this.totalDistance * 0.1;                       // Tiny reward for movement
+                    this.fitness += this.totalDistance * 0.5;                       // Reward for movement/exploration
+                    
+                    // Bonus for energy management
+                    this.fitness += this.maxEnergyReached * 0.3;
+                    
+                    // Penalty for inactivity
+                    if (this.framesSinceLastMove > 100) {
+                        this.fitness *= 0.5; // 50% penalty for being inactive
+                    }
                 } else {
                     // PREY FITNESS: Reward evasive, survival behavior
                     this.fitness += this.lifetimeFrames * CONFIG.PREY_SURVIVAL_REWARD;   // Big reward for survival
                     this.fitness += this.totalTags * CONFIG.PREY_EVASION_REWARD;         // Reward successful evasions
-                    this.fitness += this.maxEnergyReached * 0.2;                         // Reward energy management
+                    this.fitness += this.maxEnergyReached * 0.4;                         // Reward energy management
+                    this.fitness += this.totalDistance * 0.3;                           // Reward for movement/evasion
+                    
+                    // Bonus for avoiding hunters (surviving when hunters are present)
+                    let huntersNearby = creatures.filter(c => 
+                        c.isAlive && c.type === 'HUNTER' && 
+                        Math.abs(c.x - this.x) <= 3 && Math.abs(c.y - this.y) <= 3
+                    ).length;
+                    if (huntersNearby > 0) {
+                        this.fitness += this.lifetimeFrames * 0.5; // Extra survival bonus when danger is present
+                    }
                 }
                 
-                // SURVIVAL BONUS: Extra points for staying alive
-                if (this.isAlive) {
+                // BASE SURVIVAL BONUS: Extra points for staying alive long enough
+                if (this.lifetimeFrames > 300) { // Lived more than 5 seconds
+                    this.fitness += 50;
+                }
+                if (this.lifetimeFrames > 600) { // Lived more than 10 seconds
                     this.fitness += 100;
                 }
                 
-                this.fitness = Math.max(0, this.fitness); // Never negative
+                // INTERACTION BONUS: Reward creatures that actually interact with environment
+                if (this.totalDistance > 10) {
+                    this.fitness += 25; // Bonus for moving around
+                }
+                
+                this.fitness = Math.max(1, this.fitness); // Always at least 1 fitness point
             }
 
             // CHECK FOR TAGS - Handle hunter-prey interactions
@@ -1594,17 +1644,45 @@
             
             for (let i = 0; i < CONFIG.MAX_HUNTERS; i++) {
                 let hunter = new Creature(null, null, 'HUNTER');
+                
+                // Create diverse starting population with varied neural architectures
+                if (i % 4 === 0) {
+                    // 25% get simple networks (1 layer, few nodes)
+                    hunter.brain = new NeuralNetwork([2, 3]);
+                } else if (i % 4 === 1) {
+                    // 25% get medium networks (2 layers)
+                    hunter.brain = new NeuralNetwork([4, 3]);
+                } else if (i % 4 === 2) {
+                    // 25% get complex networks (3 layers)
+                    hunter.brain = new NeuralNetwork([5, 4, 3]);
+                } 
+                // 25% get random architectures (default constructor)
+                
                 if (Math.random() < 0.3) grantRandomAbility(hunter);
                 creatures.push(hunter);
             }
             
             for (let i = 0; i < CONFIG.MAX_PREY; i++) {
                 let prey = new Creature(null, null, 'PREY');
+                
+                // Create diverse starting population with varied neural architectures
+                if (i % 4 === 0) {
+                    // 25% get simple networks (1 layer, few nodes)
+                    prey.brain = new NeuralNetwork([3, 2]);
+                } else if (i % 4 === 1) {
+                    // 25% get medium networks (2 layers)
+                    prey.brain = new NeuralNetwork([4, 4]);
+                } else if (i % 4 === 2) {
+                    // 25% get complex networks (3 layers)
+                    prey.brain = new NeuralNetwork([6, 4, 2]);
+                }
+                // 25% get random architectures (default constructor)
+                
                 if (Math.random() < 0.3) grantRandomAbility(prey);
                 creatures.push(prey);
             }
             
-            console.log(`Initialized: ${CONFIG.MAX_HUNTERS} hunters, ${CONFIG.MAX_PREY} prey`);
+            console.log(`Initialized: ${CONFIG.MAX_HUNTERS} hunters, ${CONFIG.MAX_PREY} prey with diverse neural architectures`);
         }
 
         function updateStats() {
