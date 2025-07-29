@@ -468,6 +468,11 @@
             <span id="analytics-panel-arrow">▼</span>
         </div>
         <div class="panel-content" id="analytics-panel-content">
+            <h4 style="margin-bottom: 8px;">Neural Network Topology</h4>
+            <div id="topologyBreakdown" style="font-size: 10px; margin-bottom: 12px;">
+                <!-- Will be populated by JavaScript -->
+            </div>
+            
             <h4 style="margin-bottom: 8px;">Ability Occurrence Rates</h4>
             <div class="mutation-stats" id="mutationStats">
                 <!-- Will be populated by JavaScript -->
@@ -618,9 +623,14 @@
         // ===== NEURAL NETWORK CLASS =====
         // This represents the "brain" of each creature
         class NeuralNetwork {
-            constructor(hiddenNodeCount = CONFIG.HIDDEN_NODES) {
-                // Store the actual number of hidden nodes (can vary for NEAT)
-                this.hiddenNodeCount = hiddenNodeCount;
+            constructor(hiddenNodeCount = null) {
+                // NEW: Each network gets a random number of hidden nodes for initial diversity
+                if (hiddenNodeCount === null) {
+                    // Start with random topology between min and max nodes
+                    this.hiddenNodeCount = Math.floor(Math.random() * (CONFIG.MAX_HIDDEN_NODES - CONFIG.MIN_HIDDEN_NODES + 1)) + CONFIG.MIN_HIDDEN_NODES;
+                } else {
+                    this.hiddenNodeCount = hiddenNodeCount;
+                }
                 
                 // Initialize random weights for connections between nodes
                 // Input layer to hidden layer connections
@@ -633,8 +643,13 @@
                 this.hiddenBias = this.createArray(this.hiddenNodeCount);
                 this.outputBias = this.createArray(CONFIG.OUTPUT_NODES);
                 
+                // NEW: Track network complexity for diversity analysis
+                this.complexity = this.calculateComplexity();
+                
                 // Initialize with random values
                 this.randomize();
+                
+                console.log(`Created neural network with ${this.hiddenNodeCount} hidden nodes (complexity: ${this.complexity})`);
             }
 
             // Create a matrix filled with zeros
@@ -706,6 +721,14 @@
                 return 1 / (1 + Math.exp(-x)); // Sigmoid function
             }
 
+            // NEW: Calculate network complexity for diversity tracking
+            calculateComplexity() {
+                let totalConnections = (CONFIG.INPUT_NODES * this.hiddenNodeCount) + 
+                                     (this.hiddenNodeCount * CONFIG.OUTPUT_NODES) + 
+                                     this.hiddenNodeCount + CONFIG.OUTPUT_NODES; // Include biases
+                return totalConnections;
+            }
+
             // Create a copy of this neural network
             copy() {
                 let copy = new NeuralNetwork(this.hiddenNodeCount);
@@ -730,6 +753,9 @@
                 for (let i = 0; i < this.outputBias.length; i++) {
                     copy.outputBias[i] = this.outputBias[i];
                 }
+
+                // Update complexity after copying
+                copy.complexity = copy.calculateComplexity();
 
                 return copy;
             }
@@ -825,7 +851,10 @@
                 this.hiddenToOutput = newHiddenToOutput;
                 this.hiddenBias = newHiddenBias;
                 
-                console.log(`Added hidden node: ${oldHiddenCount} -> ${this.hiddenNodeCount}`);
+                // Update complexity
+                this.complexity = this.calculateComplexity();
+                
+                console.log(`Added hidden node: ${oldHiddenCount} -> ${this.hiddenNodeCount} (complexity: ${this.complexity})`);
             }
 
             // Remove a hidden node from the network
@@ -870,7 +899,10 @@
                 this.hiddenToOutput = newHiddenToOutput;
                 this.hiddenBias = newHiddenBias;
                 
-                console.log(`Removed hidden node: ${oldHiddenCount} -> ${this.hiddenNodeCount}`);
+                // Update complexity
+                this.complexity = this.calculateComplexity();
+                
+                console.log(`Removed hidden node: ${oldHiddenCount} -> ${this.hiddenNodeCount} (complexity: ${this.complexity})`);
             }
 
             // NEW: Mutate special abilities for creatures
@@ -943,7 +975,7 @@
                 
                 // Creature properties
                 this.type = type;               // HUNTER, PREY, or NEUTRAL
-                this.brain = new NeuralNetwork(); // The creature's neural network
+                this.brain = new NeuralNetwork(); // Each creature gets unique random topology
                 this.fitness = 0;               // How well this creature performs
                 this.energy = CONFIG.STARTING_ENERGY; // Energy level (affects survival)
                 this.age = 0;                   // How long the creature has lived
@@ -1785,56 +1817,118 @@
             return tournament[0];
         }
 
-        // Crossover - combine two neural networks
+        // Crossover - combine two neural networks with potentially different topologies
         function crossover(brain1, brain2) {
-            // Choose the parent with more hidden nodes as the base
-            let baseBrain = brain1.hiddenNodeCount >= brain2.hiddenNodeCount ? brain1 : brain2;
-            let otherBrain = baseBrain === brain1 ? brain2 : brain1;
+            // NEW: Enhanced diversity crossover
+            // Choose network size based on fitness and some randomness
+            let targetHiddenNodes;
             
-            let child = new NeuralNetwork(baseBrain.hiddenNodeCount);
+            // 70% chance to use parent topology, 30% chance for new random topology
+            if (Math.random() < 0.7) {
+                // Choose the parent with better fitness to guide topology
+                let baseBrain = brain1.hiddenNodeCount >= brain2.hiddenNodeCount ? brain1 : brain2;
+                let otherBrain = baseBrain === brain1 ? brain2 : brain1;
+                
+                // Small chance to vary from parent topology
+                if (Math.random() < 0.3) {
+                    targetHiddenNodes = Math.max(CONFIG.MIN_HIDDEN_NODES, 
+                                               Math.min(CONFIG.MAX_HIDDEN_NODES, 
+                                                      baseBrain.hiddenNodeCount + (Math.random() > 0.5 ? 1 : -1)));
+                } else {
+                    targetHiddenNodes = baseBrain.hiddenNodeCount;
+                }
+            } else {
+                // Create a completely new topology for maximum diversity
+                targetHiddenNodes = Math.floor(Math.random() * (CONFIG.MAX_HIDDEN_NODES - CONFIG.MIN_HIDDEN_NODES + 1)) + CONFIG.MIN_HIDDEN_NODES;
+            }
             
-            // Crossover input to hidden weights
+            let child = new NeuralNetwork(targetHiddenNodes);
+            
+            // Smart weight inheritance based on available connections
+            // Input to hidden weights
             for (let i = 0; i < CONFIG.INPUT_NODES; i++) {
                 for (let j = 0; j < child.hiddenNodeCount; j++) {
-                    if (j < otherBrain.hiddenNodeCount) {
-                        // Both parents have this connection
-                        child.inputToHidden[i][j] = Math.random() < 0.5 ? 
-                            baseBrain.inputToHidden[i][j] : otherBrain.inputToHidden[i][j];
+                    let inheritedWeight = 0;
+                    let sourceCount = 0;
+                    
+                    // Try to inherit from brain1
+                    if (j < brain1.hiddenNodeCount) {
+                        inheritedWeight += brain1.inputToHidden[i][j];
+                        sourceCount++;
+                    }
+                    
+                    // Try to inherit from brain2
+                    if (j < brain2.hiddenNodeCount) {
+                        inheritedWeight += brain2.inputToHidden[i][j];
+                        sourceCount++;
+                    }
+                    
+                    if (sourceCount > 0) {
+                        // Average the inherited weights
+                        child.inputToHidden[i][j] = inheritedWeight / sourceCount;
                     } else {
-                        // Only base parent has this connection
-                        child.inputToHidden[i][j] = baseBrain.inputToHidden[i][j];
+                        // New connection, random weight
+                        child.inputToHidden[i][j] = (Math.random() * 2) - 1;
                     }
                 }
             }
             
-            // Crossover hidden to output weights
+            // Hidden to output weights
             for (let i = 0; i < child.hiddenNodeCount; i++) {
                 for (let j = 0; j < CONFIG.OUTPUT_NODES; j++) {
-                    if (i < otherBrain.hiddenNodeCount) {
-                        // Both parents have this connection
-                        child.hiddenToOutput[i][j] = Math.random() < 0.5 ? 
-                            baseBrain.hiddenToOutput[i][j] : otherBrain.hiddenToOutput[i][j];
+                    let inheritedWeight = 0;
+                    let sourceCount = 0;
+                    
+                    // Try to inherit from brain1
+                    if (i < brain1.hiddenNodeCount) {
+                        inheritedWeight += brain1.hiddenToOutput[i][j];
+                        sourceCount++;
+                    }
+                    
+                    // Try to inherit from brain2
+                    if (i < brain2.hiddenNodeCount) {
+                        inheritedWeight += brain2.hiddenToOutput[i][j];
+                        sourceCount++;
+                    }
+                    
+                    if (sourceCount > 0) {
+                        child.hiddenToOutput[i][j] = inheritedWeight / sourceCount;
                     } else {
-                        // Only base parent has this connection
-                        child.hiddenToOutput[i][j] = baseBrain.hiddenToOutput[i][j];
+                        child.hiddenToOutput[i][j] = (Math.random() * 2) - 1;
                     }
                 }
             }
             
-            // Crossover biases
+            // Bias inheritance
             for (let i = 0; i < child.hiddenNodeCount; i++) {
-                if (i < otherBrain.hiddenNodeCount) {
-                    child.hiddenBias[i] = Math.random() < 0.5 ? 
-                        baseBrain.hiddenBias[i] : otherBrain.hiddenBias[i];
+                let inheritedBias = 0;
+                let sourceCount = 0;
+                
+                if (i < brain1.hiddenNodeCount) {
+                    inheritedBias += brain1.hiddenBias[i];
+                    sourceCount++;
+                }
+                
+                if (i < brain2.hiddenNodeCount) {
+                    inheritedBias += brain2.hiddenBias[i];
+                    sourceCount++;
+                }
+                
+                if (sourceCount > 0) {
+                    child.hiddenBias[i] = inheritedBias / sourceCount;
                 } else {
-                    child.hiddenBias[i] = baseBrain.hiddenBias[i];
+                    child.hiddenBias[i] = (Math.random() * 2) - 1;
                 }
             }
             
+            // Output biases (always inherit)
             for (let i = 0; i < CONFIG.OUTPUT_NODES; i++) {
                 child.outputBias[i] = Math.random() < 0.5 ? 
-                    baseBrain.outputBias[i] : otherBrain.outputBias[i];
+                    brain1.outputBias[i] : brain2.outputBias[i];
             }
+            
+            // Update complexity
+            child.complexity = child.calculateComplexity();
             
             return child;
         }
@@ -2034,14 +2128,34 @@
             }, 0);
             document.getElementById('abilityCount').textContent = totalAbilities;
 
-            // NEW: Calculate neural network diversity
+            // NEW: Calculate neural network diversity and complexity
             let hiddenNodeCounts = {};
+            let complexityStats = {
+                min: Infinity,
+                max: 0,
+                avg: 0,
+                total: 0
+            };
+            
             creatures.forEach(creature => {
                 let count = creature.brain.hiddenNodeCount;
+                let complexity = creature.brain.complexity;
+                
                 hiddenNodeCounts[count] = (hiddenNodeCounts[count] || 0) + 1;
+                
+                complexityStats.min = Math.min(complexityStats.min, complexity);
+                complexityStats.max = Math.max(complexityStats.max, complexity);
+                complexityStats.total += complexity;
             });
+            
+            complexityStats.avg = complexityStats.total / creatures.length;
+            
             document.getElementById('neuralDiversity').textContent = Object.keys(hiddenNodeCounts).length;
             document.getElementById('topologyChanges').textContent = turboStats.topologyChanges;
+            
+            // Add complexity info to the neural diversity display
+            let diversityText = `${Object.keys(hiddenNodeCounts).length} topologies (${complexityStats.min}-${complexityStats.max} complexity)`;
+            document.getElementById('neuralDiversity').textContent = diversityText;
 
             // NEW: Update simulation timer
             if (CONFIG.SHOW_TIMER && simulationStartTime > 0) {
@@ -2294,33 +2408,64 @@
             let bestImprovement = turboStats.bestFitnessHistory.length > 0 ? 
                 Math.max(...turboStats.bestFitnessHistory) - turboStats.bestFitnessHistory[0] : 0;
             
-            // Count current neural network diversity
-            let hiddenNodeCounts = {};
+            // Detailed neural network analysis
+            let topologyAnalysis = {};
+            let complexityStats = { min: Infinity, max: 0, total: 0 };
+            
             creatures.forEach(creature => {
-                let count = creature.brain.hiddenNodeCount;
-                hiddenNodeCounts[count] = (hiddenNodeCounts[count] || 0) + 1;
+                let nodes = creature.brain.hiddenNodeCount;
+                let complexity = creature.brain.complexity;
+                
+                if (!topologyAnalysis[nodes]) {
+                    topologyAnalysis[nodes] = { count: 0, bestFitness: 0 };
+                }
+                topologyAnalysis[nodes].count++;
+                topologyAnalysis[nodes].bestFitness = Math.max(topologyAnalysis[nodes].bestFitness, creature.fitness);
+                
+                complexityStats.min = Math.min(complexityStats.min, complexity);
+                complexityStats.max = Math.max(complexityStats.max, complexity);
+                complexityStats.total += complexity;
             });
             
-            let diversity = Object.keys(hiddenNodeCounts).length;
+            let avgComplexity = complexityStats.total / creatures.length;
+            let diversityCount = Object.keys(topologyAnalysis).length;
+            
+            // Find the most successful topology
+            let bestTopology = Object.keys(topologyAnalysis).reduce((best, nodes) => {
+                return topologyAnalysis[nodes].bestFitness > topologyAnalysis[best].bestFitness ? nodes : best;
+            });
             
             // Show results
             let resultsMessage = `🚀 TURBO MODE COMPLETE! 🚀\n\n` +
-                `📊 Results:\n` +
+                `📊 Evolution Results:\n` +
                 `• Generations evolved: ${generationsRun}\n` +
                 `• Fitness improvement: ${bestImprovement.toFixed(2)}\n` +
-                `• Topology changes: ${turboStats.topologyChanges}\n` +
-                `• Neural diversity: ${diversity} different network sizes\n` +
-                `• Network size range: ${Math.min(...Object.keys(hiddenNodeCounts))} - ${Math.max(...Object.keys(hiddenNodeCounts))} nodes\n\n` +
-                `🧬 The simulation is now ready at generation ${finalGeneration}!`;
+                `• Topology changes: ${turboStats.topologyChanges}\n\n` +
+                `🧬 Neural Network Diversity:\n` +
+                `• Unique topologies: ${diversityCount}\n` +
+                `• Complexity range: ${complexityStats.min} - ${complexityStats.max}\n` +
+                `• Average complexity: ${avgComplexity.toFixed(1)}\n` +
+                `• Best performing topology: ${bestTopology} nodes\n\n` +
+                `📈 Population Distribution:\n`;
+            
+            Object.keys(topologyAnalysis).sort((a, b) => parseInt(a) - parseInt(b)).forEach(nodes => {
+                let stats = topologyAnalysis[nodes];
+                let percentage = Math.round((stats.count / creatures.length) * 100);
+                resultsMessage += `• ${nodes} nodes: ${stats.count} creatures (${percentage}%)\n`;
+            });
+                
+            resultsMessage += `\n🎯 The simulation now shows true NEAT diversity at generation ${finalGeneration}!`;
             
             document.getElementById('turboStatus').innerHTML = resultsMessage.replace(/\n/g, '<br>');
             
-            console.log('Turbo mode completed:', {
+            console.log('Turbo mode completed with diversity analysis:', {
                 generationsRun,
                 bestImprovement,
                 topologyChanges: turboStats.topologyChanges,
-                neuralDiversity: diversity,
-                hiddenNodeDistribution: hiddenNodeCounts
+                neuralDiversity: diversityCount,
+                complexityRange: `${complexityStats.min}-${complexityStats.max}`,
+                topologyDistribution: topologyAnalysis,
+                bestTopology: `${bestTopology} nodes`
             });
         }
         // Toggle collapsible panels
@@ -2337,8 +2482,54 @@
             }
         }
 
-        // Update analytics panel with mutation statistics
+        // Update analytics panel with mutation statistics and topology breakdown
         function updateAnalytics() {
+            // NEW: Calculate topology breakdown
+            let topologyStats = {};
+            let complexityStats = { min: Infinity, max: 0, total: 0 };
+            
+            creatures.forEach(creature => {
+                let nodes = creature.brain.hiddenNodeCount;
+                let complexity = creature.brain.complexity;
+                
+                if (!topologyStats[nodes]) {
+                    topologyStats[nodes] = { count: 0, avgComplexity: 0, avgFitness: 0 };
+                }
+                
+                topologyStats[nodes].count++;
+                topologyStats[nodes].avgComplexity += complexity;
+                topologyStats[nodes].avgFitness += creature.fitness;
+                
+                complexityStats.min = Math.min(complexityStats.min, complexity);
+                complexityStats.max = Math.max(complexityStats.max, complexity);
+                complexityStats.total += complexity;
+            });
+            
+            // Calculate averages
+            Object.keys(topologyStats).forEach(nodes => {
+                let stats = topologyStats[nodes];
+                stats.avgComplexity = Math.round(stats.avgComplexity / stats.count);
+                stats.avgFitness = Math.round(stats.avgFitness / stats.count);
+            });
+            
+            // Generate topology breakdown HTML
+            let topologyHTML = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 9px;">';
+            Object.keys(topologyStats).sort((a, b) => parseInt(a) - parseInt(b)).forEach(nodes => {
+                let stats = topologyStats[nodes];
+                let percentage = Math.round((stats.count / creatures.length) * 100);
+                topologyHTML += `
+                    <div style="background: rgba(255,255,255,0.05); padding: 3px; border-radius: 2px;">
+                        <strong>${nodes} nodes:</strong> ${stats.count} (${percentage}%)
+                    </div>
+                    <div style="background: rgba(255,255,255,0.05); padding: 3px; border-radius: 2px;">
+                        Fitness: ${stats.avgFitness} | Complexity: ${stats.avgComplexity}
+                    </div>
+                `;
+            });
+            topologyHTML += '</div>';
+            
+            document.getElementById('topologyBreakdown').innerHTML = topologyHTML;
+
             // Count ability occurrences
             const abilityStats = {
                 // Hunter abilities
@@ -2483,11 +2674,14 @@
                 ctx.fill();
             });
             
-            // Add text label for hidden node count
+            // Add text label for hidden node count and complexity
             ctx.fillStyle = '#fff';
             ctx.font = '10px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(`${hidden} nodes`, 160, 150);
+            ctx.fillText(`${hidden} nodes (${creature.brain.complexity} complexity)`, 160, 150);
+            
+            // Show creature type and fitness
+            ctx.fillText(`${creature.type} - Fitness: ${creature.fitness.toFixed(0)}`, 160, 165);
         }
 
         // ===== START THE SIMULATION =====
