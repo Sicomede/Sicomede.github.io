@@ -582,7 +582,7 @@
             
             update() {
                 this.age++;
-                this.energy -= 0.1;
+                this.energy -= 0.02; // Much slower energy loss
                 
                 if (this.tagCooldown > 0) {
                     this.tagCooldown--;
@@ -634,9 +634,13 @@
                 this.fitness += 0.1; // Base survival
                 if (this.energy > 50) this.fitness += 0.1;
                 
-                // Energy cost for movement (realistic physics)
-                const movementCost = velocity * 0.01;
+                // Very small energy cost for movement
+                const movementCost = velocity * 0.001; // Much smaller cost
                 this.energy -= movementCost;
+                
+                // Slowly regenerate energy to keep creatures alive longer
+                this.energy += 0.01;
+                this.energy = Math.min(150, this.energy); // Cap at 150
                 
                 return this.energy > 0;
             }
@@ -827,9 +831,13 @@
                 this.canvas.width = container.clientWidth || 800;
                 this.canvas.height = container.clientHeight || 600;
                 
-                // Add resize listener that properly handles resize
+                // Throttled resize handler to prevent constant resizing
+                let resizeTimeout;
                 window.addEventListener('resize', () => {
-                    this.handleResize();
+                    clearTimeout(resizeTimeout);
+                    resizeTimeout = setTimeout(() => {
+                        this.handleResize();
+                    }, 250);
                 });
             }
             
@@ -837,6 +845,11 @@
                 const container = this.canvas.parentElement;
                 const newWidth = container.clientWidth || 800;
                 const newHeight = container.clientHeight || 600;
+                
+                // Only resize if dimensions actually changed significantly
+                if (Math.abs(newWidth - this.canvas.width) < 10 && Math.abs(newHeight - this.canvas.height) < 10) {
+                    return;
+                }
                 
                 // Scale creature positions if canvas size changes
                 const scaleX = newWidth / this.canvas.width;
@@ -857,8 +870,10 @@
             }
             
             initializePopulation() {
-                // Clear existing creatures
-                this.creatures = [];
+                // Don't clear if we already have creatures (prevents resize from clearing)
+                if (this.creatures.length > 0) {
+                    return;
+                }
                 
                 const initialPopulation = 50;
                 
