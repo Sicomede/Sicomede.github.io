@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evolving NEAT Neural Network Ecosystem</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a0a;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .grid-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        canvas {
+            display: block;
+            border: 1px solid #333;
+        }
+        
+        .info-panel {
+            width: 250px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-left: 1px solid #333;
+            overflow-y: auto;
+        }
+        
+        .stats {
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        
+        .creature-info {
+            border: 1px solid #333;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        
+        .mutation-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin: 2px;
+        }
+        
+        .title {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #00ffff;
+        }
+        
+        .legend {
+            font-size: 10px;
+            margin-top: 20px;
+        }
+        
+        .controls {
+            margin-top: 20px;
+        }
+        
+        button {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #333;
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        
+        button:hover {
+            background: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="grid-container">
+            <canvas id="ecosystem"></canvas>
+        </div>
+        <div class="info-panel">
+            <div class="title">NEAT Evolution Monitor</div>
+            <div class="stats">
+                <div class="stat-item">Population: <span id="population">0</span></div>
+                <div class="stat-item">Evolution Time: <span id="time">0</span>s</div>
+                <div class="stat-item">Total Tags: <span id="tags">0</span></div>
+                <div class="stat-item">Avg Fitness: <span id="avgFitness">0</span></div>
+                <div class="stat-item">Max Neural Nodes: <span id="maxNodes">0</span></div>
+                <div class="stat-item">Mutations/sec: <span id="mutationRate">0</span></div>
+            </div>
+            
+            <div class="controls">
+                <button onclick="togglePause()">Pause/Resume</button>
+                <button onclick="addRandomCreature()">Add Creature</button>
+                <button onclick="increaseMutationRate()">Boost Mutations</button>
+                <button onclick="resetEcosystem()">Reset</button>
+            </div>
+            
+            <div class="legend">
+                <h4>Creature Colors:</h4>
+                <div>🔴 Aggressive (High speed)</div>
+                <div>🔵 Defensive (High armor)</div>
+                <div>🟢 Balanced</div>
+                <div>🟡 Scout (High vision)</div>
+                <div>🟣 Psychic (Prediction)</div>
+                <div>⚫ Stealth (Low visibility)</div>
+                <div>⚪ Evolved (Complex brain)</div>
+                
+                <h4>Special Mutations:</h4>
+                <div>✨ Speed Boost</div>
+                <div>🛡️ Armor Plating</div>
+                <div>👁️ Enhanced Vision</div>
+                <div>🧠 Extra Neural Nodes</div>
+                <div>⚡ Energy Efficiency</div>
+                <div>🎯 Precision Targeting</div>
+            </div>
+            
+            <div id="selectedCreature" class="creature-info" style="display: none;">
+                <h4>Selected Creature</h4>
+                <div id="creatureDetails"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class NeuralNetwork {
+            constructor(inputSize = 8, hiddenSizes = [6, 4], outputSize = 4) {
+                this.inputSize = inputSize;
+                this.hiddenSizes = hiddenSizes;
+                this.outputSize = outputSize;
+                this.weights = [];
+                this.biases = [];
+                this.nodes = inputSize + hiddenSizes.reduce((a, b) => a + b, 0) + outputSize;
+                this.connections = [];
+                
+                this.initializeNetwork();
+            }
+            
+            initializeNetwork() {
+                const layers = [this.inputSize, ...this.hiddenSizes, this.outputSize];
+                
+                for (let i = 0; i < layers.length - 1; i++) {
+                    const weightMatrix = [];
+                    const biasVector = [];
+                    
+                    for (let j = 0; j < layers[i + 1]; j++) {
+                        const weights = [];
+                        for (let k = 0; k < layers[i]; k++) {
+                            weights.push(Math.random() * 2 - 1);
+                        }
+                        weightMatrix.push(weights);
+                        biasVector.push(Math.random() * 2 - 1);
+                    }
+                    
+                    this.weights.push(weightMatrix);
+                    this.biases.push(biasVector);
+                }
+            }
+            
+            forward(inputs) {
+                let activations = inputs;
+                
+                for (let i = 0; i < this.weights.length; i++) {
+                    const newActivations = [];
+                    
+                    for (let j = 0; j < this.weights[i].length; j++) {
+                        let sum = this.biases[i][j];
+                        for (let k = 0; k < activations.length; k++) {
+                            sum += activations[k] * this.weights[i][j][k];
+                        }
+                        newActivations.push(this.tanh(sum));
+                    }
+                    
+                    activations = newActivations;
+                }
+                
+                return activations;
+            }
+            
+            tanh(x) {
+                return Math.tanh(x);
+            }
+            
+            mutate(mutationRate = 0.1) {
+                let mutationCount = 0;
+                
+                // Mutate weights
+                for (let i = 0; i < this.weights.length; i++) {
+                    for (let j = 0; j < this.weights[i].length; j++) {
+                        for (let k = 0; k < this.weights[i][j].length; k++) {
+                            if (Math.random() < mutationRate) {
+                                this.weights[i][j][k] += (Math.random() - 0.5) * 0.5;
+                                mutationCount++;
+                            }
+                        }
+                    }
+                }
+                
+                // Mutate biases
+                for (let i = 0; i < this.biases.length; i++) {
+                    for (let j = 0; j < this.biases[i].length; j++) {
+                        if (Math.random() < mutationRate) {
+                            this.biases[i][j] += (Math.random() - 0.5) * 0.5;
+                            mutationCount++;
+                        }
+                    }
+                }
+                
+                // Structural mutations (NEAT-inspired)
+                if (Math.random() < mutationRate * 0.3) {
+                    this.addNode();
+                    mutationCount += 5;
+                }
+                
+                if (Math.random() < mutationRate * 0.2) {
+                    this.addConnection();
+                    mutationCount += 3;
+                }
+                
+                return mutationCount;
+            }
+            
+            addNode() {
+                if (this.hiddenSizes.length < 5) {
+                    const layerIndex = Math.floor(Math.random() * this.hiddenSizes.length);
+                    this.hiddenSizes[layerIndex]++;
+                    this.nodes++;
+                    this.initializeNetwork();
+                }
+            }
+            
+            addConnection() {
+                // Simplified connection addition
+                this.connections.push({
+                    from: Math.floor(Math.random() * this.nodes),
+                    to: Math.floor(Math.random() * this.nodes),
+                    weight: Math.random() * 2 - 1
+                });
+            }
+            
+            copy() {
+                const copy = new NeuralNetwork(this.inputSize, [...this.hiddenSizes], this.outputSize);
+                copy.weights = this.weights.map(layer => 
+                    layer.map(neuron => [...neuron])
+                );
+                copy.biases = this.biases.map(layer => [...layer]);
+                copy.nodes = this.nodes;
+                copy.connections = [...this.connections];
+                return copy;
+            }
+        }
+        
+        class Creature {
+            constructor(x, y, ecosystem) {
+                this.x = x;
+                this.y = y;
+                this.ecosystem = ecosystem;
+                this.brain = new NeuralNetwork();
+                
+                this.energy = 100;
+                this.fitness = 0;
+                this.age = 0;
+                this.tags = 0;
+                this.speed = 1 + Math.random() * 0.5;
+                this.vision = 50 + Math.random() * 30;
+                this.size = 8 + Math.random() * 4;
+                
+                this.mutations = new Set();
+                this.initializeMutations();
+                
+                this.color = this.generateColor();
+                this.targetX = x;
+                this.targetY = y;
+                this.isTagged = false;
+                this.tagCooldown = 0;
+                
+                this.id = Math.random().toString(36).substr(2, 9);
+            }
+            
+            initializeMutations() {
+                const possibleMutations = [
+                    'speed_boost', 'armor_plating', 'enhanced_vision',
+                    'extra_nodes', 'energy_efficiency', 'precision_targeting'
+                ];
+                
+                const numMutations = Math.floor(Math.random() * 3);
+                for (let i = 0; i < numMutations; i++) {
+                    const mutation = possibleMutations[Math.floor(Math.random() * possibleMutations.length)];
+                    this.mutations.add(mutation);
+                }
+                
+                this.applyMutations();
+            }
+            
+            applyMutations() {
+                if (this.mutations.has('speed_boost')) {
+                    this.speed *= 1.5;
+                }
+                if (this.mutations.has('armor_plating')) {
+                    this.size *= 1.2;
+                }
+                if (this.mutations.has('enhanced_vision')) {
+                    this.vision *= 1.5;
+                }
+                if (this.mutations.has('extra_nodes')) {
+                    this.brain.hiddenSizes[0] += 2;
+                    this.brain.initializeNetwork();
+                }
+                if (this.mutations.has('energy_efficiency')) {
+                    this.energy *= 1.3;
+                }
+            }
+            
+            generateColor() {
+                if (this.mutations.has('speed_boost')) return '#ff4444';
+                if (this.mutations.has('armor_plating')) return '#4444ff';
+                if (this.mutations.has('enhanced_vision')) return '#ffff44';
+                if (this.mutations.has('extra_nodes')) return '#ffffff';
+                if (this.mutations.has('precision_targeting')) return '#ff44ff';
+                if (this.mutations.has('energy_efficiency')) return '#44ffff';
+                return '#44ff44';
+            }
+            
+            getInputs() {
+                const inputs = [];
+                const creatures = this.ecosystem.creatures;
+                
+                // Self state
+                inputs.push(this.energy / 100);
+                inputs.push(this.x / this.ecosystem.canvas.width);
+                inputs.push(this.y / this.ecosystem.canvas.height);
+                inputs.push(this.isTagged ? 1 : 0);
+                
+                // Nearest creature information
+                let nearestCreature = null;
+                let minDistance = Infinity;
+                
+                for (const creature of creatures) {
+                    if (creature === this) continue;
+                    
+                    const dx = creature.x - this.x;
+                    const dy = creature.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < minDistance && distance < this.vision) {
+                        minDistance = distance;
+                        nearestCreature = creature;
+                    }
+                }
+                
+                if (nearestCreature) {
+                    inputs.push((nearestCreature.x - this.x) / this.vision);
+                    inputs.push((nearestCreature.y - this.y) / this.vision);
+                    inputs.push(nearestCreature.isTagged ? 1 : 0);
+                    inputs.push(minDistance / this.vision);
+                } else {
+                    inputs.push(0, 0, 0, 1);
+                }
+                
+                return inputs;
+            }
+            
+            update() {
+                this.age++;
+                this.energy -= 0.1;
+                
+                if (this.tagCooldown > 0) {
+                    this.tagCooldown--;
+                }
+                
+                const inputs = this.getInputs();
+                const outputs = this.brain.forward(inputs);
+                
+                // Movement based on neural network output
+                const moveX = outputs[0] * this.speed;
+                const moveY = outputs[1] * this.speed;
+                
+                this.x += moveX;
+                this.y += moveY;
+                
+                // Keep within bounds
+                this.x = Math.max(this.size, Math.min(this.ecosystem.canvas.width - this.size, this.x));
+                this.y = Math.max(this.size, Math.min(this.ecosystem.canvas.height - this.size, this.y));
+                
+                // Check for tagging
+                if (outputs[2] > 0.5 && this.tagCooldown === 0) {
+                    this.attemptTag();
+                }
+                
+                // Update fitness
+                this.fitness += 0.1; // Base survival fitness
+                if (this.energy > 50) this.fitness += 0.2;
+                
+                return this.energy > 0;
+            }
+            
+            attemptTag() {
+                const creatures = this.ecosystem.creatures;
+                
+                for (const creature of creatures) {
+                    if (creature === this) continue;
+                    
+                    const dx = creature.x - this.x;
+                    const dy = creature.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < this.size + creature.size) {
+                        if (!creature.isTagged) {
+                            creature.isTagged = true;
+                            this.tags++;
+                            this.fitness += 10;
+                            this.energy += 20;
+                            this.tagCooldown = 30;
+                            this.ecosystem.totalTags++;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            reproduce() {
+                const child = new Creature(
+                    this.x + (Math.random() - 0.5) * 50,
+                    this.y + (Math.random() - 0.5) * 50,
+                    this.ecosystem
+                );
+                
+                child.brain = this.brain.copy();
+                const mutationCount = child.brain.mutate(0.2);
+                this.ecosystem.totalMutations += mutationCount;
+                
+                // Inherit some mutations
+                for (const mutation of this.mutations) {
+                    if (Math.random() < 0.7) {
+                        child.mutations.add(mutation);
+                    }
+                }
+                
+                // Possible new mutations
+                const newMutations = [
+                    'speed_boost', 'armor_plating', 'enhanced_vision',
+                    'extra_nodes', 'energy_efficiency', 'precision_targeting'
+                ];
+                
+                if (Math.random() < 0.3) {
+                    const newMutation = newMutations[Math.floor(Math.random() * newMutations.length)];
+                    child.mutations.add(newMutation);
+                }
+                
+                child.applyMutations();
+                child.color = child.generateColor();
+                
+                this.energy -= 30;
+                
+                return child;
+            }
+            
+            draw(ctx) {
+                // Main body
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Tagged indicator
+                if (this.isTagged) {
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                
+                // Mutation indicators
+                let indicatorIndex = 0;
+                for (const mutation of this.mutations) {
+                    const angle = (indicatorIndex / this.mutations.size) * Math.PI * 2;
+                    const indicatorX = this.x + Math.cos(angle) * (this.size + 5);
+                    const indicatorY = this.y + Math.sin(angle) * (this.size + 5);
+                    
+                    ctx.fillStyle = this.getMutationColor(mutation);
+                    ctx.beginPath();
+                    ctx.arc(indicatorX, indicatorY, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    indicatorIndex++;
+                }
+                
+                // Vision range (for selected creature)
+                if (this.ecosystem.selectedCreature === this) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.vision, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+            
+            getMutationColor(mutation) {
+                const colors = {
+                    'speed_boost': '#ffff00',
+                    'armor_plating': '#888888',
+                    'enhanced_vision': '#00ffff',
+                    'extra_nodes': '#ff00ff',
+                    'energy_efficiency': '#00ff00',
+                    'precision_targeting': '#ff8800'
+                };
+                return colors[mutation] || '#ffffff';
+            }
+        }
+        
+        class Ecosystem {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.creatures = [];
+                this.selectedCreature = null;
+                
+                this.totalTags = 0;
+                this.totalMutations = 0;
+                this.startTime = Date.now();
+                this.isPaused = false;
+                
+                this.baseMutationRate = 0.1;
+                this.currentMutationRate = this.baseMutationRate;
+                
+                this.resize();
+                this.initializePopulation();
+                this.setupEventListeners();
+                
+                window.addEventListener('resize', () => this.resize());
+            }
+            
+            resize() {
+                const container = this.canvas.parentElement;
+                this.canvas.width = container.clientWidth;
+                this.canvas.height = container.clientHeight;
+            }
+            
+            initializePopulation() {
+                const initialPopulation = 50;
+                
+                for (let i = 0; i < initialPopulation; i++) {
+                    const x = Math.random() * this.canvas.width;
+                    const y = Math.random() * this.canvas.height;
+                    this.creatures.push(new Creature(x, y, this));
+                }
+            }
+            
+            setupEventListeners() {
+                this.canvas.addEventListener('click', (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    
+                    let clickedCreature = null;
+                    let minDistance = Infinity;
+                    
+                    for (const creature of this.creatures) {
+                        const dx = creature.x - clickX;
+                        const dy = creature.y - clickY;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < creature.size && distance < minDistance) {
+                            minDistance = distance;
+                            clickedCreature = creature;
+                        }
+                    }
+                    
+                    this.selectedCreature = clickedCreature;
+                    this.updateCreatureInfo();
+                });
+            }
+            
+            update() {
+                if (this.isPaused) return;
+                
+                // Update all creatures
+                this.creatures = this.creatures.filter(creature => creature.update());
+                
+                // Continuous evolution - reproduce high fitness creatures
+                const sortedCreatures = [...this.creatures].sort((a, b) => b.fitness - a.fitness);
+                
+                // Reproduce top performers
+                if (this.creatures.length < 200) {
+                    const reproductionThreshold = Math.max(50, this.creatures.length * 0.3);
+                    
+                    for (let i = 0; i < Math.min(5, sortedCreatures.length); i++) {
+                        const parent = sortedCreatures[i];
+                        if (parent.fitness > reproductionThreshold && parent.energy > 50) {
+                            const child = parent.reproduce();
+                            this.creatures.push(child);
+                        }
+                    }
+                }
+                
+                // Remove low fitness creatures periodically
+                if (this.creatures.length > 150) {
+                    const removeCount = Math.floor(this.creatures.length * 0.1);
+                    const toRemove = sortedCreatures.slice(-removeCount);
+                    
+                    for (const creature of toRemove) {
+                        const index = this.creatures.indexOf(creature);
+                        if (index > -1) {
+                            this.creatures.splice(index, 1);
+                        }
+                    }
+                }
+                
+                // Reset tags periodically
+                if (Math.random() < 0.01) {
+                    for (const creature of this.creatures) {
+                        if (Math.random() < 0.3) {
+                            creature.isTagged = false;
+                        }
+                    }
+                }
+                
+                // Add random mutations to environment
+                if (Math.random() < this.currentMutationRate * 0.1) {
+                    const randomCreature = this.creatures[Math.floor(Math.random() * this.creatures.length)];
+                    if (randomCreature) {
+                        this.totalMutations += randomCreature.brain.mutate(this.currentMutationRate);
+                    }
+                }
+                
+                // Decay mutation rate back to base
+                this.currentMutationRate = Math.max(this.baseMutationRate, this.currentMutationRate * 0.999);
+            }
+            
+            draw() {
+                this.ctx.fillStyle = '#0a0a0a';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw grid
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+                this.ctx.lineWidth = 1;
+                
+                const gridSize = 50;
+                for (let x = 0; x < this.canvas.width; x += gridSize) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x, this.canvas.height);
+                    this.ctx.stroke();
+                }
+                
+                for (let y = 0; y < this.canvas.height; y += gridSize) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, y);
+                    this.ctx.lineTo(this.canvas.width, y);
+                    this.ctx.stroke();
+                }
+                
+                // Draw creatures
+                for (const creature of this.creatures) {
+                    creature.draw(this.ctx);
+                }
+                
+                this.updateStats();
+            }
+            
+            updateStats() {
+                const currentTime = Date.now();
+                const elapsedTime = Math.floor((currentTime - this.startTime) / 1000);
+                
+                document.getElementById('population').textContent = this.creatures.length;
+                document.getElementById('time').textContent = elapsedTime;
+                document.getElementById('tags').textContent = this.totalTags;
+                
+                const avgFitness = this.creatures.length > 0 
+                    ? (this.creatures.reduce((sum, c) => sum + c.fitness, 0) / this.creatures.length).toFixed(1)
+                    : 0;
+                document.getElementById('avgFitness').textContent = avgFitness;
+                
+                const maxNodes = Math.max(...this.creatures.map(c => c.brain.nodes));
+                document.getElementById('maxNodes').textContent = maxNodes;
+                
+                const mutationRate = (this.totalMutations / Math.max(1, elapsedTime)).toFixed(2);
+                document.getElementById('mutationRate').textContent = mutationRate;
+            }
+            
+            updateCreatureInfo() {
+                const infoPanel = document.getElementById('selectedCreature');
+                const detailsDiv = document.getElementById('creatureDetails');
+                
+                if (this.selectedCreature) {
+                    infoPanel.style.display = 'block';
+                    
+                    const creature = this.selectedCreature;
+                    const mutationList = Array.from(creature.mutations).join(', ') || 'None';
+                    
+                    detailsDiv.innerHTML = `
+                        <div>ID: ${creature.id}</div>
+                        <div>Age: ${creature.age}</div>
+                        <div>Energy: ${creature.energy.toFixed(1)}</div>
+                        <div>Fitness: ${creature.fitness.toFixed(1)}</div>
+                        <div>Tags: ${creature.tags}</div>
+                        <div>Speed: ${creature.speed.toFixed(2)}</div>
+                        <div>Vision: ${creature.vision.toFixed(0)}</div>
+                        <div>Neural Nodes: ${creature.brain.nodes}</div>
+                        <div>Mutations: ${mutationList}</div>
+                        <div>Tagged: ${creature.isTagged ? 'Yes' : 'No'}</div>
+                    `;
+                } else {
+                    infoPanel.style.display = 'none';
+                }
+            }
+            
+            addRandomCreature() {
+                const x = Math.random() * this.canvas.width;
+                const y = Math.random() * this.canvas.height;
+                this.creatures.push(new Creature(x, y, this));
+            }
+            
+            togglePause() {
+                this.isPaused = !this.isPaused;
+            }
+            
+            increaseMutationRate() {
+                this.currentMutationRate = Math.min(1.0, this.currentMutationRate * 2);
+            }
+            
+            reset() {
+                this.creatures = [];
+                this.selectedCreature = null;
+                this.totalTags = 0;
+                this.totalMutations = 0;
+                this.startTime = Date.now();
+                this.currentMutationRate = this.baseMutationRate;
+                this.initializePopulation();
+            }
+        }
+        
+        // Global functions for controls
+        let ecosystem;
+        
+        function togglePause() {
+            ecosystem.togglePause();
+        }
+        
+        function addRandomCreature() {
+            ecosystem.addRandomCreature();
+        }
+        
+        function increaseMutationRate() {
+            ecosystem.increaseMutationRate();
+        }
+        
+        function resetEcosystem() {
+            ecosystem.reset();
+        }
+        
+        // Initialize the ecosystem
+        window.addEventListener('load', () => {
+            ecosystem = new Ecosystem('ecosystem');
+            
+            function gameLoop() {
+                ecosystem.update();
+                ecosystem.draw();
+                requestAnimationFrame(gameLoop);
+            }
+            
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
