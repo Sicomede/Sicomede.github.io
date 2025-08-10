@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEAT Evolution Ecosystem</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a0a;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .main-canvas {
+            flex: 1;
+            position: relative;
+        }
+        
+        canvas {
+            display: block;
+            border: 1px solid #333;
+        }
+        
+        .info-panel {
+            width: 250px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-left: 1px solid #333;
+        }
+        
+        .stats {
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        
+        .controls {
+            margin: 10px 0;
+        }
+        
+        button {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #333;
+            padding: 8px 12px;
+            margin: 5px 2px;
+            cursor: pointer;
+            font-family: inherit;
+            width: 100%;
+        }
+        
+        button:hover {
+            background: #333;
+        }
+        
+        .title {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #00ffff;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-canvas">
+            <canvas id="world"></canvas>
+        </div>
+        <div class="info-panel">
+            <div class="title">NEAT Evolution</div>
+            
+            <div class="stats">
+                <div class="stat-item">Population: <span id="pop">0</span></div>
+                <div class="stat-item">Hunters: <span id="hunters">0</span></div>
+                <div class="stat-item">Prey: <span id="prey">0</span></div>
+                <div class="stat-item">Time: <span id="time">0</span>s</div>
+                <div class="stat-item">Tags: <span id="tags">0</span></div>
+            </div>
+            
+            <div class="controls">
+                <button onclick="pauseToggle()">Pause/Resume</button>
+                <button onclick="addCreature()">Add Creature</button>
+                <button onclick="clearAll()">Clear All</button>
+                <button onclick="restart()">Restart</button>
+            </div>
+            
+            <div style="font-size: 10px; margin-top: 20px;">
+                <div>🔺 = Hunters (Red)</div>
+                <div>⚪ = Prey (Blue)</div>
+                <div>→ = Movement direction</div>
+                <br>
+                <div>When hunter catches prey:</div>
+                <div>• They switch roles</div>
+                <div>• Neural networks evolve</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simple NEAT Neural Network
+        class Brain {
+            constructor() {
+                this.weights = [];
+                this.biases = [];
+                
+                // Simple 3-layer network: 8 inputs -> 6 hidden -> 3 outputs
+                this.layers = [8, 6, 3];
+                
+                this.initializeWeights();
+            }
+            
+            initializeWeights() {
+                for (let i = 0; i < this.layers.length - 1; i++) {
+                    let layerWeights = [];
+                    let layerBiases = [];
+                    
+                    for (let j = 0; j < this.layers[i + 1]; j++) {
+                        let neuronWeights = [];
+                        for (let k = 0; k < this.layers[i]; k++) {
+                            neuronWeights.push(Math.random() * 2 - 1);
+                        }
+                        layerWeights.push(neuronWeights);
+                        layerBiases.push(Math.random() * 2 - 1);
+                    }
+                    
+                    this.weights.push(layerWeights);
+                    this.biases.push(layerBiases);
+                }
+            }
+            
+            think(inputs) {
+                let activations = inputs;
+                
+                for (let i = 0; i < this.weights.length; i++) {
+                    let newActivations = [];
+                    
+                    for (let j = 0; j < this.weights[i].length; j++) {
+                        let sum = this.biases[i][j];
+                        for (let k = 0; k < activations.length; k++) {
+                            sum += activations[k] * this.weights[i][j][k];
+                        }
+                        newActivations.push(Math.tanh(sum));
+                    }
+                    
+                    activations = newActivations;
+                }
+                
+                return activations;
+            }
+            
+            mutate(rate = 0.1) {
+                for (let i = 0; i < this.weights.length; i++) {
+                    for (let j = 0; j < this.weights[i].length; j++) {
+                        for (let k = 0; k < this.weights[i][j].length; k++) {
+                            if (Math.random() < rate) {
+                                this.weights[i][j][k] += (Math.random() - 0.5) * 0.5;
+                            }
+                        }
+                    }
+                }
+                
+                for (let i = 0; i < this.biases.length; i++) {
+                    for (let j = 0; j < this.biases[i].length; j++) {
+                        if (Math.random() < rate) {
+                            this.biases[i][j] += (Math.random() - 0.5) * 0.5;
+                        }
+                    }
+                }
+            }
+            
+            copy() {
+                let newBrain = new Brain();
+                newBrain.weights = this.weights.map(layer => 
+                    layer.map(neuron => [...neuron])
+                );
+                newBrain.biases = this.biases.map(layer => [...layer]);
+                return newBrain;
+            }
+        }
+        
+        // Simple Creature
+        class Creature {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.size = 8;
+                this.energy = 100;
+                this.age = 0;
+                this.fitness = 0;
+                this.isHunter = Math.random() < 0.5;
+                this.brain = new Brain();
+                this.color = this.isHunter ? '#ff4444' : '#4444ff';
+                this.speed = 2;
+            }
+            
+            update(world) {
+                this.age++;
+                this.energy -= 0.05; // Slow energy loss
+                
+                // Get inputs for brain
+                let inputs = this.getInputs(world);
+                let outputs = this.brain.think(inputs);
+                
+                // Use brain outputs for movement
+                this.vx += outputs[0] * 0.5;
+                this.vy += outputs[1] * 0.5;
+                
+                // Limit speed
+                let speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.speed) {
+                    this.vx = (this.vx / speed) * this.speed;
+                    this.vy = (this.vy / speed) * this.speed;
+                }
+                
+                // Move
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Bounce off walls
+                if (this.x < this.size || this.x > world.width - this.size) {
+                    this.vx *= -0.8;
+                    this.x = Math.max(this.size, Math.min(world.width - this.size, this.x));
+                }
+                if (this.y < this.size || this.y > world.height - this.size) {
+                    this.vy *= -0.8;
+                    this.y = Math.max(this.size, Math.min(world.height - this.size, this.y));
+                }
+                
+                // Try to tag if brain says so
+                if (outputs[2] > 0.5) {
+                    this.tryTag(world);
+                }
+                
+                // Gain fitness for survival
+                this.fitness += 0.1;
+                
+                return this.energy > 0;
+            }
+            
+            getInputs(world) {
+                let inputs = [];
+                
+                // Self info
+                inputs.push(this.x / world.width);
+                inputs.push(this.y / world.height);
+                inputs.push(this.vx / this.speed);
+                inputs.push(this.vy / this.speed);
+                inputs.push(this.isHunter ? 1 : -1);
+                inputs.push(this.energy / 100);
+                
+                // Find nearest other creature
+                let nearest = null;
+                let minDist = Infinity;
+                
+                for (let other of world.creatures) {
+                    if (other === this) continue;
+                    
+                    let dx = other.x - this.x;
+                    let dy = other.y - this.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearest = other;
+                    }
+                }
+                
+                if (nearest) {
+                    let dx = nearest.x - this.x;
+                    let dy = nearest.y - this.y;
+                    inputs.push(dx / 100); // Normalized distance
+                    inputs.push(dy / 100);
+                } else {
+                    inputs.push(0);
+                    inputs.push(0);
+                }
+                
+                return inputs;
+            }
+            
+            tryTag(world) {
+                for (let other of world.creatures) {
+                    if (other === this) continue;
+                    if (this.isHunter === other.isHunter) continue; // Same type
+                    
+                    let dx = other.x - this.x;
+                    let dy = other.y - this.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < this.size + other.size) {
+                        // Tag successful! Switch roles
+                        this.isHunter = !this.isHunter;
+                        other.isHunter = !other.isHunter;
+                        
+                        this.color = this.isHunter ? '#ff4444' : '#4444ff';
+                        other.color = other.isHunter ? '#ff4444' : '#4444ff';
+                        
+                        this.fitness += 20;
+                        this.energy += 10;
+                        
+                        world.tags++;
+                        break;
+                    }
+                }
+            }
+            
+            reproduce() {
+                let child = new Creature(
+                    this.x + (Math.random() - 0.5) * 40,
+                    this.y + (Math.random() - 0.5) * 40
+                );
+                
+                child.brain = this.brain.copy();
+                child.brain.mutate(0.2);
+                child.isHunter = this.isHunter;
+                child.color = this.isHunter ? '#ff4444' : '#4444ff';
+                
+                this.energy -= 20;
+                return child;
+            }
+            
+            draw(ctx) {
+                // Main body
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Role indicator
+                ctx.fillStyle = '#ffffff';
+                if (this.isHunter) {
+                    // Triangle for hunters
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y - 4);
+                    ctx.lineTo(this.x - 3, this.y + 3);
+                    ctx.lineTo(this.x + 3, this.y + 3);
+                    ctx.fill();
+                } else {
+                    // Circle for prey
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Movement arrow
+                if (this.vx !== 0 || this.vy !== 0) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.x + this.vx * 5, this.y + this.vy * 5);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // Simple World
+        class World {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.creatures = [];
+                this.width = 0;
+                this.height = 0;
+                this.tags = 0;
+                this.startTime = Date.now();
+                this.paused = false;
+                
+                this.resize();
+                this.populate();
+                
+                window.addEventListener('resize', () => this.resize());
+            }
+            
+            resize() {
+                let container = this.canvas.parentElement;
+                this.width = container.clientWidth;
+                this.height = container.clientHeight;
+                this.canvas.width = this.width;
+                this.canvas.height = this.height;
+            }
+            
+            populate() {
+                this.creatures = [];
+                for (let i = 0; i < 30; i++) {
+                    let x = Math.random() * (this.width - 40) + 20;
+                    let y = Math.random() * (this.height - 40) + 20;
+                    this.creatures.push(new Creature(x, y));
+                }
+            }
+            
+            update() {
+                if (this.paused) return;
+                
+                // Update creatures
+                this.creatures = this.creatures.filter(c => c.update(this));
+                
+                // Reproduction
+                if (this.creatures.length < 50) {
+                    let parents = this.creatures
+                        .filter(c => c.fitness > 50 && c.energy > 40)
+                        .sort((a, b) => b.fitness - a.fitness)
+                        .slice(0, 5);
+                    
+                    for (let parent of parents) {
+                        if (Math.random() < 0.1) {
+                            this.creatures.push(parent.reproduce());
+                        }
+                    }
+                }
+                
+                // Remove excess creatures
+                if (this.creatures.length > 60) {
+                    this.creatures.sort((a, b) => a.fitness - b.fitness);
+                    this.creatures = this.creatures.slice(10);
+                }
+            }
+            
+            draw() {
+                // Clear
+                this.ctx.fillStyle = '#0a0a0a';
+                this.ctx.fillRect(0, 0, this.width, this.height);
+                
+                // Grid
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+                this.ctx.lineWidth = 1;
+                for (let x = 0; x < this.width; x += 50) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x, this.height);
+                    this.ctx.stroke();
+                }
+                for (let y = 0; y < this.height; y += 50) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, y);
+                    this.ctx.lineTo(this.width, y);
+                    this.ctx.stroke();
+                }
+                
+                // Creatures
+                for (let creature of this.creatures) {
+                    creature.draw(this.ctx);
+                }
+                
+                this.updateStats();
+            }
+            
+            updateStats() {
+                let hunters = this.creatures.filter(c => c.isHunter).length;
+                let prey = this.creatures.length - hunters;
+                let time = Math.floor((Date.now() - this.startTime) / 1000);
+                
+                document.getElementById('pop').textContent = this.creatures.length;
+                document.getElementById('hunters').textContent = hunters;
+                document.getElementById('prey').textContent = prey;
+                document.getElementById('time').textContent = time;
+                document.getElementById('tags').textContent = this.tags;
+            }
+        }
+        
+        // Global variables and functions
+        let world;
+        
+        function pauseToggle() {
+            if (world) {
+                world.paused = !world.paused;
+            }
+        }
+        
+        function addCreature() {
+            if (world) {
+                let x = Math.random() * (world.width - 40) + 20;
+                let y = Math.random() * (world.height - 40) + 20;
+                world.creatures.push(new Creature(x, y));
+            }
+        }
+        
+        function clearAll() {
+            if (world) {
+                world.creatures = [];
+            }
+        }
+        
+        function restart() {
+            if (world) {
+                world.creatures = [];
+                world.tags = 0;
+                world.startTime = Date.now();
+                world.populate();
+            }
+        }
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            let canvas = document.getElementById('world');
+            world = new World(canvas);
+            
+            function gameLoop() {
+                world.update();
+                world.draw();
+                requestAnimationFrame(gameLoop);
+            }
+            
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
