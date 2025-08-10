@@ -132,6 +132,12 @@
                 <div>🧠 Extra Neural Nodes</div>
                 <div>⚡ Energy Efficiency</div>
                 <div>🎯 Precision Targeting</div>
+                
+                <h4>Pure NEAT Evolution:</h4>
+                <div>• No pre-programmed behaviors</div>
+                <div>• All movement from neural networks</div>
+                <div>• Networks evolve topology & weights</div>
+                <div>• Emergent strategies only</div>
             </div>
             
             <div id="selectedCreature" class="creature-info" style="display: none;">
@@ -143,37 +149,118 @@
 
     <script>
         class NeuralNetwork {
-            constructor(inputSize = 8, hiddenSizes = [6, 4], outputSize = 4) {
+            constructor(inputSize = 12, hiddenSizes = [], outputSize = 3) {
                 this.inputSize = inputSize;
-                this.hiddenSizes = hiddenSizes;
+                this.hiddenSizes = hiddenSizes.length > 0 ? hiddenSizes : [Math.floor(Math.random() * 8) + 4];
                 this.outputSize = outputSize;
                 this.weights = [];
                 this.biases = [];
-                this.nodes = inputSize + hiddenSizes.reduce((a, b) => a + b, 0) + outputSize;
+                this.nodes = inputSize + this.hiddenSizes.reduce((a, b) => a + b, 0) + outputSize;
                 this.connections = [];
+                this.innovationNumber = 0;
+                
+                // NEAT-specific properties
+                this.nodeGenes = [];
+                this.connectionGenes = [];
                 
                 this.initializeNetwork();
             }
             
             initializeNetwork() {
+                // Initialize with minimal topology - start simple and let NEAT add complexity
                 const layers = [this.inputSize, ...this.hiddenSizes, this.outputSize];
+                
+                // Create node genes
+                let nodeId = 0;
+                for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
+                    for (let nodeIndex = 0; nodeIndex < layers[layerIndex]; nodeIndex++) {
+                        this.nodeGenes.push({
+                            id: nodeId++,
+                            type: layerIndex === 0 ? 'input' : layerIndex === layers.length - 1 ? 'output' : 'hidden',
+                            layer: layerIndex,
+                            bias: layerIndex > 0 ? (Math.random() * 2 - 1) : 0
+                        });
+                    }
+                }
+                
+                // Create initial connection genes (minimal connections)
+                for (let i = 0; i < layers.length - 1; i++) {
+                    const currentLayerStart = layers.slice(0, i).reduce((a, b) => a + b, 0);
+                    const nextLayerStart = layers.slice(0, i + 1).reduce((a, b) => a + b, 0);
+                    
+                    for (let from = currentLayerStart; from < currentLayerStart + layers[i]; from++) {
+                        for (let to = nextLayerStart; to < nextLayerStart + layers[i + 1]; to++) {
+                            // Only create some connections initially to allow NEAT to add more
+                            if (Math.random() < 0.7) {
+                                this.connectionGenes.push({
+                                    innovation: this.innovationNumber++,
+                                    from: from,
+                                    to: to,
+                                    weight: Math.random() * 2 - 1,
+                                    enabled: true
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                this.compileNetwork();
+            }
+            
+            compileNetwork() {
+                // Convert genes to usable network structure
+                const layers = [this.inputSize, ...this.hiddenSizes, this.outputSize];
+                this.weights = [];
+                this.biases = [];
                 
                 for (let i = 0; i < layers.length - 1; i++) {
                     const weightMatrix = [];
                     const biasVector = [];
                     
                     for (let j = 0; j < layers[i + 1]; j++) {
-                        const weights = [];
-                        for (let k = 0; k < layers[i]; k++) {
-                            weights.push(Math.random() * 2 - 1);
-                        }
+                        const weights = new Array(layers[i]).fill(0);
                         weightMatrix.push(weights);
-                        biasVector.push(Math.random() * 2 - 1);
+                        biasVector.push(0);
                     }
                     
                     this.weights.push(weightMatrix);
                     this.biases.push(biasVector);
                 }
+                
+                // Apply connection genes to weight matrix
+                for (const connection of this.connectionGenes) {
+                    if (!connection.enabled) continue;
+                    
+                    const fromNode = this.nodeGenes[connection.from];
+                    const toNode = this.nodeGenes[connection.to];
+                    
+                    if (fromNode && toNode && toNode.layer > fromNode.layer) {
+                        const layerIndex = toNode.layer - 1;
+                        const fromIndex = connection.from - this.getLayerStartIndex(fromNode.layer);
+                        const toIndex = connection.to - this.getLayerStartIndex(toNode.layer);
+                        
+                        if (this.weights[layerIndex] && this.weights[layerIndex][toIndex]) {
+                            this.weights[layerIndex][toIndex][fromIndex] = connection.weight;
+                        }
+                    }
+                }
+                
+                // Apply node biases
+                for (let i = 1; i < this.nodeGenes.length; i++) {
+                    const node = this.nodeGenes[i];
+                    if (node.type !== 'input') {
+                        const layerIndex = node.layer - 1;
+                        const nodeIndex = i - this.getLayerStartIndex(node.layer);
+                        if (this.biases[layerIndex]) {
+                            this.biases[layerIndex][nodeIndex] = node.bias;
+                        }
+                    }
+                }
+            }
+            
+            getLayerStartIndex(layer) {
+                const layers = [this.inputSize, ...this.hiddenSizes, this.outputSize];
+                return layers.slice(0, layer).reduce((a, b) => a + b, 0);
             }
             
             forward(inputs) {
@@ -203,68 +290,152 @@
             mutate(mutationRate = 0.1) {
                 let mutationCount = 0;
                 
-                // Mutate weights
-                for (let i = 0; i < this.weights.length; i++) {
-                    for (let j = 0; j < this.weights[i].length; j++) {
-                        for (let k = 0; k < this.weights[i][j].length; k++) {
-                            if (Math.random() < mutationRate) {
-                                this.weights[i][j][k] += (Math.random() - 0.5) * 0.5;
-                                mutationCount++;
-                            }
+                // Weight mutations
+                for (const connection of this.connectionGenes) {
+                    if (Math.random() < mutationRate) {
+                        if (Math.random() < 0.9) {
+                            // Perturb weight
+                            connection.weight += (Math.random() - 0.5) * 0.5;
+                        } else {
+                            // Replace weight
+                            connection.weight = Math.random() * 2 - 1;
                         }
+                        mutationCount++;
                     }
                 }
                 
-                // Mutate biases
-                for (let i = 0; i < this.biases.length; i++) {
-                    for (let j = 0; j < this.biases[i].length; j++) {
-                        if (Math.random() < mutationRate) {
-                            this.biases[i][j] += (Math.random() - 0.5) * 0.5;
-                            mutationCount++;
-                        }
+                // Bias mutations
+                for (const node of this.nodeGenes) {
+                    if (node.type !== 'input' && Math.random() < mutationRate) {
+                        node.bias += (Math.random() - 0.5) * 0.5;
+                        mutationCount++;
                     }
                 }
                 
-                // Structural mutations (NEAT-inspired)
+                // Structural mutations - true NEAT
                 if (Math.random() < mutationRate * 0.3) {
-                    this.addNode();
-                    mutationCount += 5;
-                }
-                
-                if (Math.random() < mutationRate * 0.2) {
-                    this.addConnection();
+                    this.addConnectionMutation();
                     mutationCount += 3;
                 }
                 
+                if (Math.random() < mutationRate * 0.1) {
+                    this.addNodeMutation();
+                    mutationCount += 5;
+                }
+                
+                // Toggle connection
+                if (Math.random() < mutationRate * 0.1) {
+                    const randomConnection = this.connectionGenes[Math.floor(Math.random() * this.connectionGenes.length)];
+                    if (randomConnection) {
+                        randomConnection.enabled = !randomConnection.enabled;
+                        mutationCount++;
+                    }
+                }
+                
+                this.compileNetwork();
                 return mutationCount;
             }
             
-            addNode() {
-                if (this.hiddenSizes.length < 5) {
-                    const layerIndex = Math.floor(Math.random() * this.hiddenSizes.length);
-                    this.hiddenSizes[layerIndex]++;
-                    this.nodes++;
-                    this.initializeNetwork();
+            addConnectionMutation() {
+                const maxAttempts = 20;
+                for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                    const fromNode = this.nodeGenes[Math.floor(Math.random() * this.nodeGenes.length)];
+                    const toNode = this.nodeGenes[Math.floor(Math.random() * this.nodeGenes.length)];
+                    
+                    // Ensure forward connection and no self-loops
+                    if (fromNode.layer < toNode.layer && fromNode.id !== toNode.id) {
+                        // Check if connection already exists
+                        const exists = this.connectionGenes.some(conn => 
+                            conn.from === fromNode.id && conn.to === toNode.id
+                        );
+                        
+                        if (!exists) {
+                            this.connectionGenes.push({
+                                innovation: this.innovationNumber++,
+                                from: fromNode.id,
+                                to: toNode.id,
+                                weight: Math.random() * 2 - 1,
+                                enabled: true
+                            });
+                            break;
+                        }
+                    }
                 }
             }
             
-            addConnection() {
-                // Simplified connection addition
-                this.connections.push({
-                    from: Math.floor(Math.random() * this.nodes),
-                    to: Math.floor(Math.random() * this.nodes),
-                    weight: Math.random() * 2 - 1
+            addNodeMutation() {
+                if (this.connectionGenes.length === 0) return;
+                
+                // Split a random enabled connection
+                const enabledConnections = this.connectionGenes.filter(conn => conn.enabled);
+                if (enabledConnections.length === 0) return;
+                
+                const connectionToSplit = enabledConnections[Math.floor(Math.random() * enabledConnections.length)];
+                connectionToSplit.enabled = false;
+                
+                // Add new hidden node
+                const newNodeId = this.nodeGenes.length;
+                const fromNode = this.nodeGenes[connectionToSplit.from];
+                const toNode = this.nodeGenes[connectionToSplit.to];
+                const newLayer = fromNode.layer + 1;
+                
+                // If we need to create a new layer
+                if (newLayer >= toNode.layer) {
+                    // Shift layers of subsequent nodes
+                    for (const node of this.nodeGenes) {
+                        if (node.layer >= newLayer && node.type === 'hidden') {
+                            node.layer++;
+                        }
+                    }
+                    this.hiddenSizes.push(1);
+                } else {
+                    // Find the appropriate hidden layer to add to
+                    const layerIndex = newLayer - 1;
+                    if (layerIndex < this.hiddenSizes.length) {
+                        this.hiddenSizes[layerIndex]++;
+                    }
+                }
+                
+                this.nodeGenes.push({
+                    id: newNodeId,
+                    type: 'hidden',
+                    layer: newLayer,
+                    bias: Math.random() * 2 - 1
                 });
+                
+                // Add connections: from original start to new node, and from new node to original end
+                this.connectionGenes.push({
+                    innovation: this.innovationNumber++,
+                    from: connectionToSplit.from,
+                    to: newNodeId,
+                    weight: 1.0, // Maintain signal strength
+                    enabled: true
+                });
+                
+                this.connectionGenes.push({
+                    innovation: this.innovationNumber++,
+                    from: newNodeId,
+                    to: connectionToSplit.to,
+                    weight: connectionToSplit.weight,
+                    enabled: true
+                });
+                
+                this.nodes = this.nodeGenes.length;
             }
             
             copy() {
                 const copy = new NeuralNetwork(this.inputSize, [...this.hiddenSizes], this.outputSize);
-                copy.weights = this.weights.map(layer => 
-                    layer.map(neuron => [...neuron])
-                );
-                copy.biases = this.biases.map(layer => [...layer]);
+                
+                // Deep copy node genes
+                copy.nodeGenes = this.nodeGenes.map(node => ({...node}));
+                
+                // Deep copy connection genes
+                copy.connectionGenes = this.connectionGenes.map(conn => ({...conn}));
+                
+                copy.innovationNumber = this.innovationNumber;
                 copy.nodes = this.nodes;
-                copy.connections = [...this.connections];
+                
+                copy.compileNetwork();
                 return copy;
             }
         }
@@ -294,11 +465,12 @@
                 this.tagCooldown = 0;
                 this.lastTaggedBy = null;
                 
-                // Movement properties
+                // Movement properties - PURE physics, no pre-baked behaviors
                 this.velocityX = 0;
                 this.velocityY = 0;
                 this.maxVelocity = this.speed;
                 
+                // Remove personality system - let neural networks evolve all behavior
                 this.id = Math.random().toString(36).substr(2, 9);
             }
             
@@ -360,18 +532,16 @@
                 const inputs = [];
                 const creatures = this.ecosystem.creatures;
                 
-                // Self state
+                // Self state (normalized)
                 inputs.push(this.energy / 100);
-                inputs.push(this.x / this.ecosystem.canvas.width);
-                inputs.push(this.y / this.ecosystem.canvas.height);
-                inputs.push(this.isHunter ? 1 : -1); // Role indicator
+                inputs.push((this.x - this.ecosystem.canvas.width / 2) / (this.ecosystem.canvas.width / 2)); // Relative to center
+                inputs.push((this.y - this.ecosystem.canvas.height / 2) / (this.ecosystem.canvas.height / 2));
+                inputs.push(this.isHunter ? 1 : -1);
+                inputs.push(this.velocityX / this.maxVelocity);
+                inputs.push(this.velocityY / this.maxVelocity);
                 
-                // Find nearest hunter and nearest prey
-                let nearestHunter = null;
-                let nearestPrey = null;
-                let minHunterDistance = Infinity;
-                let minPreyDistance = Infinity;
-                
+                // Find all nearby creatures and their relative positions
+                const nearbyCreatures = [];
                 for (const creature of creatures) {
                     if (creature === this) continue;
                     
@@ -379,33 +549,32 @@
                     const dy = creature.y - this.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     
-                    if (distance < this.vision) {
-                        if (creature.isHunter && distance < minHunterDistance) {
-                            minHunterDistance = distance;
-                            nearestHunter = creature;
-                        } else if (!creature.isHunter && distance < minPreyDistance) {
-                            minPreyDistance = distance;
-                            nearestPrey = creature;
-                        }
+                    if (distance < this.vision && distance > 0) {
+                        nearbyCreatures.push({
+                            creature,
+                            dx: dx / this.vision,
+                            dy: dy / this.vision,
+                            distance: distance / this.vision,
+                            isHunter: creature.isHunter
+                        });
                     }
                 }
                 
-                // Nearest hunter information (for prey to avoid)
-                if (nearestHunter) {
-                    inputs.push((nearestHunter.x - this.x) / this.vision);
-                    inputs.push((nearestHunter.y - this.y) / this.vision);
-                    inputs.push(minHunterDistance / this.vision);
-                } else {
-                    inputs.push(0, 0, 1);
-                }
+                // Sort by distance and take closest 3 creatures
+                nearbyCreatures.sort((a, b) => a.distance - b.distance);
+                const closestCreatures = nearbyCreatures.slice(0, 3);
                 
-                // Nearest prey information (for hunters to chase)
-                if (nearestPrey) {
-                    inputs.push((nearestPrey.x - this.x) / this.vision);
-                    inputs.push((nearestPrey.y - this.y) / this.vision);
-                    inputs.push(minPreyDistance / this.vision);
-                } else {
-                    inputs.push(0, 0, 1);
+                // Add inputs for closest creatures (3 creatures * 2 inputs each = 6 inputs)
+                for (let i = 0; i < 3; i++) {
+                    if (i < closestCreatures.length) {
+                        const creature = closestCreatures[i];
+                        inputs.push(creature.dx);
+                        inputs.push(creature.dy);
+                        inputs.push(creature.distance);
+                        inputs.push(creature.isHunter ? 1 : -1);
+                    } else {
+                        inputs.push(0, 0, 1, 0); // No creature detected
+                    }
                 }
                 
                 return inputs;
@@ -422,162 +591,58 @@
                 const inputs = this.getInputs();
                 const outputs = this.brain.forward(inputs);
                 
-                // Get desired movement from neural network
-                let desiredVelX = outputs[0] * this.speed;
-                let desiredVelY = outputs[1] * this.speed;
+                // PURE neural network control - no pre-baked behaviors!
+                // Neural network outputs: [velocityX, velocityY, attemptTag]
                 
-                // Apply collision avoidance and behavior modifications
-                const avoidance = this.calculateAvoidance();
-                desiredVelX += avoidance.x;
-                desiredVelY += avoidance.y;
+                // Apply neural network decisions directly
+                const desiredVelX = outputs[0] * this.speed; // Range: -speed to +speed
+                const desiredVelY = outputs[1] * this.speed;
+                const shouldTag = outputs[2] > 0; // Sigmoid output > 0 means "attempt tag"
                 
-                // Apply role-specific behavior
-                if (this.isHunter) {
-                    const chase = this.calculateChase();
-                    desiredVelX += chase.x * 0.5;
-                    desiredVelY += chase.y * 0.5;
-                } else {
-                    const flee = this.calculateFlee();
-                    desiredVelX += flee.x * 0.7;
-                    desiredVelY += flee.y * 0.7;
-                }
-                
-                // Smooth velocity changes
+                // Smooth velocity changes (only physics, no behavior modification)
                 this.velocityX += (desiredVelX - this.velocityX) * 0.3;
                 this.velocityY += (desiredVelY - this.velocityY) * 0.3;
                 
-                // Limit velocity
+                // Limit velocity (physics constraint only)
                 const velocity = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY);
                 if (velocity > this.maxVelocity) {
                     this.velocityX = (this.velocityX / velocity) * this.maxVelocity;
                     this.velocityY = (this.velocityY / velocity) * this.maxVelocity;
                 }
                 
-                // Update position
+                // Update position (pure physics)
                 this.x += this.velocityX;
                 this.y += this.velocityY;
                 
-                // Keep within bounds with bouncing
-                if (this.x <= this.size || this.x >= this.ecosystem.canvas.width - this.size) {
-                    this.velocityX *= -0.8;
-                    this.x = Math.max(this.size, Math.min(this.ecosystem.canvas.width - this.size, this.x));
+                // Boundary handling (physical constraints only)
+                const buffer = this.size;
+                if (this.x <= buffer || this.x >= this.ecosystem.canvas.width - buffer) {
+                    this.velocityX *= -0.8; // Energy loss on collision
+                    this.x = Math.max(buffer, Math.min(this.ecosystem.canvas.width - buffer, this.x));
                 }
-                if (this.y <= this.size || this.y >= this.ecosystem.canvas.height - this.size) {
+                if (this.y <= buffer || this.y >= this.ecosystem.canvas.height - buffer) {
                     this.velocityY *= -0.8;
-                    this.y = Math.max(this.size, Math.min(this.ecosystem.canvas.height - this.size, this.y));
+                    this.y = Math.max(buffer, Math.min(this.ecosystem.canvas.height - buffer, this.y));
                 }
                 
-                // Check for tagging (only hunters can tag)
-                if (this.isHunter && outputs[2] > 0.3 && this.tagCooldown === 0) {
+                // Check for tagging - only based on neural network decision
+                if (shouldTag && this.tagCooldown === 0) {
                     this.attemptTag();
                 }
                 
-                // Update fitness based on role
-                this.fitness += 0.1; // Base survival fitness
-                if (this.energy > 50) this.fitness += 0.2;
+                // Fitness based purely on survival and success
+                this.fitness += 0.1; // Base survival
+                if (this.energy > 50) this.fitness += 0.1;
                 
-                if (this.isHunter) {
-                    this.fitness += 0.05; // Small bonus for being hunter
-                } else {
-                    this.fitness += 0.1; // Bonus for prey survival
-                }
+                // Energy cost for movement (realistic physics)
+                const movementCost = velocity * 0.01;
+                this.energy -= movementCost;
                 
                 return this.energy > 0;
             }
             
-            calculateAvoidance() {
-                let avoidanceX = 0;
-                let avoidanceY = 0;
-                const avoidanceRange = this.size * 3;
-                
-                for (const creature of this.ecosystem.creatures) {
-                    if (creature === this) continue;
-                    
-                    const dx = this.x - creature.x;
-                    const dy = this.y - creature.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance < avoidanceRange && distance > 0) {
-                        const force = (avoidanceRange - distance) / avoidanceRange;
-                        const normalizedDx = dx / distance;
-                        const normalizedDy = dy / distance;
-                        
-                        avoidanceX += normalizedDx * force * this.speed * 0.8;
-                        avoidanceY += normalizedDy * force * this.speed * 0.8;
-                    }
-                }
-                
-                return { x: avoidanceX, y: avoidanceY };
-            }
-            
-            calculateChase() {
-                let chaseX = 0;
-                let chaseY = 0;
-                let nearestPrey = null;
-                let minDistance = Infinity;
-                
-                for (const creature of this.ecosystem.creatures) {
-                    if (creature === this || creature.isHunter) continue;
-                    
-                    const dx = creature.x - this.x;
-                    const dy = creature.y - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance < this.vision && distance < minDistance) {
-                        minDistance = distance;
-                        nearestPrey = creature;
-                    }
-                }
-                
-                if (nearestPrey) {
-                    const dx = nearestPrey.x - this.x;
-                    const dy = nearestPrey.y - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance > 0) {
-                        chaseX = (dx / distance) * this.speed;
-                        chaseY = (dy / distance) * this.speed;
-                    }
-                }
-                
-                return { x: chaseX, y: chaseY };
-            }
-            
-            calculateFlee() {
-                let fleeX = 0;
-                let fleeY = 0;
-                let nearestHunter = null;
-                let minDistance = Infinity;
-                
-                for (const creature of this.ecosystem.creatures) {
-                    if (creature === this || !creature.isHunter) continue;
-                    
-                    const dx = creature.x - this.x;
-                    const dy = creature.y - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance < this.vision && distance < minDistance) {
-                        minDistance = distance;
-                        nearestHunter = creature;
-                    }
-                }
-                
-                if (nearestHunter) {
-                    const dx = this.x - nearestHunter.x;
-                    const dy = this.y - nearestHunter.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance > 0) {
-                        fleeX = (dx / distance) * this.speed;
-                        fleeY = (dy / distance) * this.speed;
-                    }
-                }
-                
-                return { x: fleeX, y: fleeY };
-            }
-            
             attemptTag() {
-                if (!this.isHunter) return; // Only hunters can tag
+                if (!this.isHunter) return; // Only hunters can tag (game rule, not AI bias)
                 
                 const creatures = this.ecosystem.creatures;
                 
@@ -599,9 +664,9 @@
                         
                         // Update fitness and energy
                         this.tags++;
-                        this.fitness += 15;
-                        this.energy += 25;
-                        creature.fitness += 5; // Small bonus for being tagged (evolution pressure)
+                        this.fitness += 20; // Reward for successful tag
+                        this.energy += 30;
+                        creature.fitness -= 5; // Small penalty for being caught
                         
                         this.tagCooldown = 60;
                         creature.tagCooldown = 30;
@@ -936,6 +1001,7 @@
                         <div>Speed: ${creature.speed.toFixed(2)}</div>
                         <div>Vision: ${creature.vision.toFixed(0)}</div>
                         <div>Neural Nodes: ${creature.brain.nodes}</div>
+                        <div>Connections: ${creature.brain.connectionGenes.filter(c => c.enabled).length}</div>
                         <div>Mutations: ${mutationList}</div>
                         <div>Velocity: ${Math.sqrt(creature.velocityX * creature.velocityX + creature.velocityY * creature.velocityY).toFixed(2)}</div>
                     `;
