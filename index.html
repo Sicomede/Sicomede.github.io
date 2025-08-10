@@ -115,14 +115,15 @@
             </div>
             
             <div class="legend">
-                <h4>Creature Colors:</h4>
-                <div>🔴 Aggressive (High speed)</div>
-                <div>🔵 Defensive (High armor)</div>
-                <div>🟢 Balanced</div>
-                <div>🟡 Scout (High vision)</div>
-                <div>🟣 Psychic (Prediction)</div>
-                <div>⚫ Stealth (Low visibility)</div>
-                <div>⚪ Evolved (Complex brain)</div>
+                <h4>Creature Types:</h4>
+                <div>� Hunter (Red tones) - Chases prey</div>
+                <div>⚪ Prey (Blue tones) - Flees from hunters</div>
+                <div>➤ Direction arrow shows movement</div>
+                
+                <h4>Role Switching:</h4>
+                <div>When hunter tags prey:</div>
+                <div>• Hunter becomes prey</div>
+                <div>• Prey becomes hunter</div>
                 
                 <h4>Special Mutations:</h4>
                 <div>✨ Speed Boost</div>
@@ -289,8 +290,14 @@
                 this.color = this.generateColor();
                 this.targetX = x;
                 this.targetY = y;
-                this.isTagged = false;
+                this.isHunter = Math.random() < 0.5; // Start with random roles
                 this.tagCooldown = 0;
+                this.lastTaggedBy = null;
+                
+                // Movement properties
+                this.velocityX = 0;
+                this.velocityY = 0;
+                this.maxVelocity = this.speed;
                 
                 this.id = Math.random().toString(36).substr(2, 9);
             }
@@ -330,13 +337,23 @@
             }
             
             generateColor() {
-                if (this.mutations.has('speed_boost')) return '#ff4444';
-                if (this.mutations.has('armor_plating')) return '#4444ff';
-                if (this.mutations.has('enhanced_vision')) return '#ffff44';
-                if (this.mutations.has('extra_nodes')) return '#ffffff';
-                if (this.mutations.has('precision_targeting')) return '#ff44ff';
-                if (this.mutations.has('energy_efficiency')) return '#44ffff';
-                return '#44ff44';
+                // Base color on role first, then mutations
+                let baseColor;
+                if (this.isHunter) {
+                    baseColor = '#ff6666'; // Red for hunters
+                } else {
+                    baseColor = '#6666ff'; // Blue for prey
+                }
+                
+                // Modify color based on mutations
+                if (this.mutations.has('speed_boost')) return this.isHunter ? '#ff4444' : '#4444aa';
+                if (this.mutations.has('armor_plating')) return this.isHunter ? '#aa4444' : '#444488';
+                if (this.mutations.has('enhanced_vision')) return this.isHunter ? '#ff8844' : '#4488ff';
+                if (this.mutations.has('extra_nodes')) return this.isHunter ? '#ffaaaa' : '#aaaaff';
+                if (this.mutations.has('precision_targeting')) return this.isHunter ? '#ff44aa' : '#44aaff';
+                if (this.mutations.has('energy_efficiency')) return this.isHunter ? '#ffaa44' : '#44aaff';
+                
+                return baseColor;
             }
             
             getInputs() {
@@ -347,11 +364,13 @@
                 inputs.push(this.energy / 100);
                 inputs.push(this.x / this.ecosystem.canvas.width);
                 inputs.push(this.y / this.ecosystem.canvas.height);
-                inputs.push(this.isTagged ? 1 : 0);
+                inputs.push(this.isHunter ? 1 : -1); // Role indicator
                 
-                // Nearest creature information
-                let nearestCreature = null;
-                let minDistance = Infinity;
+                // Find nearest hunter and nearest prey
+                let nearestHunter = null;
+                let nearestPrey = null;
+                let minHunterDistance = Infinity;
+                let minPreyDistance = Infinity;
                 
                 for (const creature of creatures) {
                     if (creature === this) continue;
@@ -360,19 +379,33 @@
                     const dy = creature.y - this.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     
-                    if (distance < minDistance && distance < this.vision) {
-                        minDistance = distance;
-                        nearestCreature = creature;
+                    if (distance < this.vision) {
+                        if (creature.isHunter && distance < minHunterDistance) {
+                            minHunterDistance = distance;
+                            nearestHunter = creature;
+                        } else if (!creature.isHunter && distance < minPreyDistance) {
+                            minPreyDistance = distance;
+                            nearestPrey = creature;
+                        }
                     }
                 }
                 
-                if (nearestCreature) {
-                    inputs.push((nearestCreature.x - this.x) / this.vision);
-                    inputs.push((nearestCreature.y - this.y) / this.vision);
-                    inputs.push(nearestCreature.isTagged ? 1 : 0);
-                    inputs.push(minDistance / this.vision);
+                // Nearest hunter information (for prey to avoid)
+                if (nearestHunter) {
+                    inputs.push((nearestHunter.x - this.x) / this.vision);
+                    inputs.push((nearestHunter.y - this.y) / this.vision);
+                    inputs.push(minHunterDistance / this.vision);
                 } else {
-                    inputs.push(0, 0, 0, 1);
+                    inputs.push(0, 0, 1);
+                }
+                
+                // Nearest prey information (for hunters to chase)
+                if (nearestPrey) {
+                    inputs.push((nearestPrey.x - this.x) / this.vision);
+                    inputs.push((nearestPrey.y - this.y) / this.vision);
+                    inputs.push(minPreyDistance / this.vision);
+                } else {
+                    inputs.push(0, 0, 1);
                 }
                 
                 return inputs;
@@ -389,49 +422,193 @@
                 const inputs = this.getInputs();
                 const outputs = this.brain.forward(inputs);
                 
-                // Movement based on neural network output
-                const moveX = outputs[0] * this.speed;
-                const moveY = outputs[1] * this.speed;
+                // Get desired movement from neural network
+                let desiredVelX = outputs[0] * this.speed;
+                let desiredVelY = outputs[1] * this.speed;
                 
-                this.x += moveX;
-                this.y += moveY;
+                // Apply collision avoidance and behavior modifications
+                const avoidance = this.calculateAvoidance();
+                desiredVelX += avoidance.x;
+                desiredVelY += avoidance.y;
                 
-                // Keep within bounds
-                this.x = Math.max(this.size, Math.min(this.ecosystem.canvas.width - this.size, this.x));
-                this.y = Math.max(this.size, Math.min(this.ecosystem.canvas.height - this.size, this.y));
+                // Apply role-specific behavior
+                if (this.isHunter) {
+                    const chase = this.calculateChase();
+                    desiredVelX += chase.x * 0.5;
+                    desiredVelY += chase.y * 0.5;
+                } else {
+                    const flee = this.calculateFlee();
+                    desiredVelX += flee.x * 0.7;
+                    desiredVelY += flee.y * 0.7;
+                }
                 
-                // Check for tagging
-                if (outputs[2] > 0.5 && this.tagCooldown === 0) {
+                // Smooth velocity changes
+                this.velocityX += (desiredVelX - this.velocityX) * 0.3;
+                this.velocityY += (desiredVelY - this.velocityY) * 0.3;
+                
+                // Limit velocity
+                const velocity = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY);
+                if (velocity > this.maxVelocity) {
+                    this.velocityX = (this.velocityX / velocity) * this.maxVelocity;
+                    this.velocityY = (this.velocityY / velocity) * this.maxVelocity;
+                }
+                
+                // Update position
+                this.x += this.velocityX;
+                this.y += this.velocityY;
+                
+                // Keep within bounds with bouncing
+                if (this.x <= this.size || this.x >= this.ecosystem.canvas.width - this.size) {
+                    this.velocityX *= -0.8;
+                    this.x = Math.max(this.size, Math.min(this.ecosystem.canvas.width - this.size, this.x));
+                }
+                if (this.y <= this.size || this.y >= this.ecosystem.canvas.height - this.size) {
+                    this.velocityY *= -0.8;
+                    this.y = Math.max(this.size, Math.min(this.ecosystem.canvas.height - this.size, this.y));
+                }
+                
+                // Check for tagging (only hunters can tag)
+                if (this.isHunter && outputs[2] > 0.3 && this.tagCooldown === 0) {
                     this.attemptTag();
                 }
                 
-                // Update fitness
+                // Update fitness based on role
                 this.fitness += 0.1; // Base survival fitness
                 if (this.energy > 50) this.fitness += 0.2;
+                
+                if (this.isHunter) {
+                    this.fitness += 0.05; // Small bonus for being hunter
+                } else {
+                    this.fitness += 0.1; // Bonus for prey survival
+                }
                 
                 return this.energy > 0;
             }
             
+            calculateAvoidance() {
+                let avoidanceX = 0;
+                let avoidanceY = 0;
+                const avoidanceRange = this.size * 3;
+                
+                for (const creature of this.ecosystem.creatures) {
+                    if (creature === this) continue;
+                    
+                    const dx = this.x - creature.x;
+                    const dy = this.y - creature.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < avoidanceRange && distance > 0) {
+                        const force = (avoidanceRange - distance) / avoidanceRange;
+                        const normalizedDx = dx / distance;
+                        const normalizedDy = dy / distance;
+                        
+                        avoidanceX += normalizedDx * force * this.speed * 0.8;
+                        avoidanceY += normalizedDy * force * this.speed * 0.8;
+                    }
+                }
+                
+                return { x: avoidanceX, y: avoidanceY };
+            }
+            
+            calculateChase() {
+                let chaseX = 0;
+                let chaseY = 0;
+                let nearestPrey = null;
+                let minDistance = Infinity;
+                
+                for (const creature of this.ecosystem.creatures) {
+                    if (creature === this || creature.isHunter) continue;
+                    
+                    const dx = creature.x - this.x;
+                    const dy = creature.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < this.vision && distance < minDistance) {
+                        minDistance = distance;
+                        nearestPrey = creature;
+                    }
+                }
+                
+                if (nearestPrey) {
+                    const dx = nearestPrey.x - this.x;
+                    const dy = nearestPrey.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > 0) {
+                        chaseX = (dx / distance) * this.speed;
+                        chaseY = (dy / distance) * this.speed;
+                    }
+                }
+                
+                return { x: chaseX, y: chaseY };
+            }
+            
+            calculateFlee() {
+                let fleeX = 0;
+                let fleeY = 0;
+                let nearestHunter = null;
+                let minDistance = Infinity;
+                
+                for (const creature of this.ecosystem.creatures) {
+                    if (creature === this || !creature.isHunter) continue;
+                    
+                    const dx = creature.x - this.x;
+                    const dy = creature.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < this.vision && distance < minDistance) {
+                        minDistance = distance;
+                        nearestHunter = creature;
+                    }
+                }
+                
+                if (nearestHunter) {
+                    const dx = this.x - nearestHunter.x;
+                    const dy = this.y - nearestHunter.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > 0) {
+                        fleeX = (dx / distance) * this.speed;
+                        fleeY = (dy / distance) * this.speed;
+                    }
+                }
+                
+                return { x: fleeX, y: fleeY };
+            }
+            
             attemptTag() {
+                if (!this.isHunter) return; // Only hunters can tag
+                
                 const creatures = this.ecosystem.creatures;
                 
                 for (const creature of creatures) {
-                    if (creature === this) continue;
+                    if (creature === this || creature.isHunter) continue; // Can only tag prey
                     
                     const dx = creature.x - this.x;
                     const dy = creature.y - this.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     
                     if (distance < this.size + creature.size) {
-                        if (!creature.isTagged) {
-                            creature.isTagged = true;
-                            this.tags++;
-                            this.fitness += 10;
-                            this.energy += 20;
-                            this.tagCooldown = 30;
-                            this.ecosystem.totalTags++;
-                            break;
-                        }
+                        // Successful tag! Switch roles
+                        this.isHunter = false;
+                        creature.isHunter = true;
+                        
+                        // Update colors
+                        this.color = this.generateColor();
+                        creature.color = creature.generateColor();
+                        
+                        // Update fitness and energy
+                        this.tags++;
+                        this.fitness += 15;
+                        this.energy += 25;
+                        creature.fitness += 5; // Small bonus for being tagged (evolution pressure)
+                        
+                        this.tagCooldown = 60;
+                        creature.tagCooldown = 30;
+                        
+                        this.ecosystem.totalTags++;
+                        
+                        break;
                     }
                 }
             }
@@ -446,6 +623,9 @@
                 child.brain = this.brain.copy();
                 const mutationCount = child.brain.mutate(0.2);
                 this.ecosystem.totalMutations += mutationCount;
+                
+                // Inherit role and some properties
+                child.isHunter = this.isHunter;
                 
                 // Inherit some mutations
                 for (const mutation of this.mutations) {
@@ -480,10 +660,35 @@
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Tagged indicator
-                if (this.isTagged) {
-                    ctx.strokeStyle = '#ff0000';
+                // Role indicator
+                if (this.isHunter) {
+                    // Triangle for hunters
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y - this.size * 0.5);
+                    ctx.lineTo(this.x - this.size * 0.3, this.y + this.size * 0.3);
+                    ctx.lineTo(this.x + this.size * 0.3, this.y + this.size * 0.3);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Circle for prey
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Velocity indicator (direction arrow)
+                const velocity = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY);
+                if (velocity > 0.1) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
                     ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    const arrowLength = this.size * 1.5;
+                    const endX = this.x + (this.velocityX / velocity) * arrowLength;
+                    const endY = this.y + (this.velocityY / velocity) * arrowLength;
+                    ctx.lineTo(endX, endY);
                     ctx.stroke();
                 }
                 
@@ -623,12 +828,25 @@
                     }
                 }
                 
-                // Reset tags periodically
-                if (Math.random() < 0.01) {
-                    for (const creature of this.creatures) {
-                        if (Math.random() < 0.3) {
-                            creature.isTagged = false;
-                        }
+                // Balance hunter/prey ratio
+                const hunters = this.creatures.filter(c => c.isHunter);
+                const prey = this.creatures.filter(c => !c.isHunter);
+                
+                // If too many hunters, convert some to prey
+                if (hunters.length > prey.length * 2) {
+                    const excessHunters = hunters.slice(0, Math.floor(hunters.length * 0.2));
+                    for (const hunter of excessHunters) {
+                        hunter.isHunter = false;
+                        hunter.color = hunter.generateColor();
+                    }
+                }
+                
+                // If too many prey, convert some to hunters
+                if (prey.length > hunters.length * 3) {
+                    const excessPrey = prey.slice(0, Math.floor(prey.length * 0.1));
+                    for (const preyCreature of excessPrey) {
+                        preyCreature.isHunter = true;
+                        preyCreature.color = preyCreature.generateColor();
                     }
                 }
                 
@@ -679,7 +897,10 @@
                 const currentTime = Date.now();
                 const elapsedTime = Math.floor((currentTime - this.startTime) / 1000);
                 
-                document.getElementById('population').textContent = this.creatures.length;
+                const hunters = this.creatures.filter(c => c.isHunter);
+                const prey = this.creatures.filter(c => !c.isHunter);
+                
+                document.getElementById('population').textContent = `${this.creatures.length} (H:${hunters.length} P:${prey.length})`;
                 document.getElementById('time').textContent = elapsedTime;
                 document.getElementById('tags').textContent = this.totalTags;
                 
@@ -707,6 +928,7 @@
                     
                     detailsDiv.innerHTML = `
                         <div>ID: ${creature.id}</div>
+                        <div>Role: ${creature.isHunter ? 'Hunter 🔺' : 'Prey ⚪'}</div>
                         <div>Age: ${creature.age}</div>
                         <div>Energy: ${creature.energy.toFixed(1)}</div>
                         <div>Fitness: ${creature.fitness.toFixed(1)}</div>
@@ -715,7 +937,7 @@
                         <div>Vision: ${creature.vision.toFixed(0)}</div>
                         <div>Neural Nodes: ${creature.brain.nodes}</div>
                         <div>Mutations: ${mutationList}</div>
-                        <div>Tagged: ${creature.isTagged ? 'Yes' : 'No'}</div>
+                        <div>Velocity: ${Math.sqrt(creature.velocityX * creature.velocityX + creature.velocityY * creature.velocityY).toFixed(2)}</div>
                     `;
                 } else {
                     infoPanel.style.display = 'none';
