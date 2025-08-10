@@ -719,9 +719,8 @@
             }
             
             draw(ctx) {
-                // Debug: make sure creature is visible
-                if (!ctx || this.x < 0 || this.y < 0) {
-                    console.warn(`Creature at invalid position: ${this.x}, ${this.y}`);
+                // Ensure valid position and context
+                if (!ctx || this.x == null || this.y == null || this.size == null) {
                     return;
                 }
                 
@@ -761,18 +760,20 @@
                 }
                 
                 // Mutation indicators
-                let indicatorIndex = 0;
-                for (const mutation of this.mutations) {
-                    const angle = (indicatorIndex / this.mutations.size) * Math.PI * 2;
-                    const indicatorX = this.x + Math.cos(angle) * (this.size + 5);
-                    const indicatorY = this.y + Math.sin(angle) * (this.size + 5);
-                    
-                    ctx.fillStyle = this.getMutationColor(mutation);
-                    ctx.beginPath();
-                    ctx.arc(indicatorX, indicatorY, 2, 0, Math.PI * 2);
-                    ctx.fill();
-                    
-                    indicatorIndex++;
+                if (this.mutations) {
+                    let indicatorIndex = 0;
+                    for (const mutation of this.mutations) {
+                        const angle = (indicatorIndex / this.mutations.size) * Math.PI * 2;
+                        const indicatorX = this.x + Math.cos(angle) * (this.size + 5);
+                        const indicatorY = this.y + Math.sin(angle) * (this.size + 5);
+                        
+                        ctx.fillStyle = this.getMutationColor(mutation);
+                        ctx.beginPath();
+                        ctx.arc(indicatorX, indicatorY, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        indicatorIndex++;
+                    }
                 }
                 
                 // Vision range (for selected creature)
@@ -813,41 +814,64 @@
                 this.baseMutationRate = 0.1;
                 this.currentMutationRate = this.baseMutationRate;
                 
-                this.resize();
+                // Set up canvas properly
+                this.setupCanvas();
                 this.setupEventListeners();
                 
-                // Initialize population AFTER canvas is sized
-                setTimeout(() => {
-                    this.initializePopulation();
-                }, 100);
-                
-                window.addEventListener('resize', () => this.resize());
+                // Initialize population immediately
+                this.initializePopulation();
             }
             
-            resize() {
+            setupCanvas() {
                 const container = this.canvas.parentElement;
-                this.canvas.width = container.clientWidth;
-                this.canvas.height = container.clientHeight;
-                console.log(`Canvas resized to: ${this.canvas.width}x${this.canvas.height}`);
+                this.canvas.width = container.clientWidth || 800;
+                this.canvas.height = container.clientHeight || 600;
+                
+                // Add resize listener that properly handles resize
+                window.addEventListener('resize', () => {
+                    this.handleResize();
+                });
+            }
+            
+            handleResize() {
+                const container = this.canvas.parentElement;
+                const newWidth = container.clientWidth || 800;
+                const newHeight = container.clientHeight || 600;
+                
+                // Scale creature positions if canvas size changes
+                const scaleX = newWidth / this.canvas.width;
+                const scaleY = newHeight / this.canvas.height;
+                
+                this.canvas.width = newWidth;
+                this.canvas.height = newHeight;
+                
+                // Scale all creature positions
+                for (const creature of this.creatures) {
+                    creature.x *= scaleX;
+                    creature.y *= scaleY;
+                    
+                    // Ensure creatures stay within bounds
+                    creature.x = Math.max(creature.size, Math.min(this.canvas.width - creature.size, creature.x));
+                    creature.y = Math.max(creature.size, Math.min(this.canvas.height - creature.size, creature.y));
+                }
             }
             
             initializePopulation() {
+                // Clear existing creatures
+                this.creatures = [];
+                
                 const initialPopulation = 50;
                 
-                // Ensure canvas has proper dimensions
-                if (this.canvas.width === 0 || this.canvas.height === 0) {
-                    this.resize();
-                }
-                
-                console.log(`Initializing ${initialPopulation} creatures on canvas ${this.canvas.width}x${this.canvas.height}`);
+                // Ensure we have valid canvas dimensions
+                const width = this.canvas.width || 800;
+                const height = this.canvas.height || 600;
                 
                 for (let i = 0; i < initialPopulation; i++) {
-                    const x = Math.random() * (this.canvas.width - 40) + 20; // Keep away from edges
-                    const y = Math.random() * (this.canvas.height - 40) + 20;
-                    this.creatures.push(new Creature(x, y, this));
+                    const x = Math.random() * (width - 60) + 30; // 30px buffer from edges
+                    const y = Math.random() * (height - 60) + 30;
+                    const creature = new Creature(x, y, this);
+                    this.creatures.push(creature);
                 }
-                
-                console.log(`Created ${this.creatures.length} creatures`);
             }
             
             setupEventListeners() {
@@ -945,6 +969,7 @@
             }
             
             draw() {
+                // Clear canvas
                 this.ctx.fillStyle = '#0a0a0a';
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 
@@ -968,9 +993,12 @@
                 }
                 
                 // Draw creatures
-                console.log(`Drawing ${this.creatures.length} creatures`);
-                for (const creature of this.creatures) {
-                    creature.draw(this.ctx);
+                if (this.creatures && this.creatures.length > 0) {
+                    for (const creature of this.creatures) {
+                        if (creature && creature.draw) {
+                            creature.draw(this.ctx);
+                        }
+                    }
                 }
                 
                 this.updateStats();
@@ -1029,8 +1057,10 @@
             }
             
             addRandomCreature() {
-                const x = Math.random() * this.canvas.width;
-                const y = Math.random() * this.canvas.height;
+                const width = this.canvas.width || 800;
+                const height = this.canvas.height || 600;
+                const x = Math.random() * (width - 60) + 30;
+                const y = Math.random() * (height - 60) + 30;
                 this.creatures.push(new Creature(x, y, this));
             }
             
@@ -1074,15 +1104,20 @@
         
         // Initialize the ecosystem
         window.addEventListener('load', () => {
-            ecosystem = new Ecosystem('ecosystem');
-            
-            function gameLoop() {
-                ecosystem.update();
-                ecosystem.draw();
-                requestAnimationFrame(gameLoop);
-            }
-            
-            gameLoop();
+            // Wait for DOM to be fully ready
+            setTimeout(() => {
+                ecosystem = new Ecosystem('ecosystem');
+                
+                function gameLoop() {
+                    if (ecosystem && ecosystem.creatures) {
+                        ecosystem.update();
+                        ecosystem.draw();
+                    }
+                    requestAnimationFrame(gameLoop);
+                }
+                
+                gameLoop();
+            }, 200);
         });
     </script>
 </body>
