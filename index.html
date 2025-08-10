@@ -719,6 +719,12 @@
             }
             
             draw(ctx) {
+                // Debug: make sure creature is visible
+                if (!ctx || this.x < 0 || this.y < 0) {
+                    console.warn(`Creature at invalid position: ${this.x}, ${this.y}`);
+                    return;
+                }
+                
                 // Main body
                 ctx.fillStyle = this.color;
                 ctx.beginPath();
@@ -726,22 +732,19 @@
                 ctx.fill();
                 
                 // Role indicator
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
                 if (this.isHunter) {
                     // Triangle for hunters
-                    ctx.fillStyle = '#ffffff';
-                    ctx.beginPath();
                     ctx.moveTo(this.x, this.y - this.size * 0.5);
                     ctx.lineTo(this.x - this.size * 0.3, this.y + this.size * 0.3);
                     ctx.lineTo(this.x + this.size * 0.3, this.y + this.size * 0.3);
                     ctx.closePath();
-                    ctx.fill();
                 } else {
                     // Circle for prey
-                    ctx.fillStyle = '#ffffff';
-                    ctx.beginPath();
                     ctx.arc(this.x, this.y, this.size * 0.3, 0, Math.PI * 2);
-                    ctx.fill();
                 }
+                ctx.fill();
                 
                 // Velocity indicator (direction arrow)
                 const velocity = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY);
@@ -811,8 +814,12 @@
                 this.currentMutationRate = this.baseMutationRate;
                 
                 this.resize();
-                this.initializePopulation();
                 this.setupEventListeners();
+                
+                // Initialize population AFTER canvas is sized
+                setTimeout(() => {
+                    this.initializePopulation();
+                }, 100);
                 
                 window.addEventListener('resize', () => this.resize());
             }
@@ -821,16 +828,26 @@
                 const container = this.canvas.parentElement;
                 this.canvas.width = container.clientWidth;
                 this.canvas.height = container.clientHeight;
+                console.log(`Canvas resized to: ${this.canvas.width}x${this.canvas.height}`);
             }
             
             initializePopulation() {
                 const initialPopulation = 50;
                 
+                // Ensure canvas has proper dimensions
+                if (this.canvas.width === 0 || this.canvas.height === 0) {
+                    this.resize();
+                }
+                
+                console.log(`Initializing ${initialPopulation} creatures on canvas ${this.canvas.width}x${this.canvas.height}`);
+                
                 for (let i = 0; i < initialPopulation; i++) {
-                    const x = Math.random() * this.canvas.width;
-                    const y = Math.random() * this.canvas.height;
+                    const x = Math.random() * (this.canvas.width - 40) + 20; // Keep away from edges
+                    const y = Math.random() * (this.canvas.height - 40) + 20;
                     this.creatures.push(new Creature(x, y, this));
                 }
+                
+                console.log(`Created ${this.creatures.length} creatures`);
             }
             
             setupEventListeners() {
@@ -951,6 +968,7 @@
                 }
                 
                 // Draw creatures
+                console.log(`Drawing ${this.creatures.length} creatures`);
                 for (const creature of this.creatures) {
                     creature.draw(this.ctx);
                 }
